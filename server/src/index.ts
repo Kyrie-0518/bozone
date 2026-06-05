@@ -27,10 +27,15 @@ import { syncAllProducts } from './services/tiktok-product-sync.js'
 const app = new Hono()
 
 app.use('*', cors({
-  origin: ['http://localhost:5174', 'http://localhost:5173', 'http://8.138.36.120', 'http://127.0.0.1:5174'],
+  origin: (origin) => {
+    // Allow no-origin (server-to-server) or listed origins
+    const allowed = ['http://localhost:5174', 'http://localhost:5173', 'http://8.138.36.120', 'http://127.0.0.1:5174']
+    return !origin || allowed.includes(origin) ? (origin || 'http://8.138.36.120') : null
+  },
   credentials: true,
-  allowHeaders: ['Content-Type', 'Authorization'],
-  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+  maxAge: 86400,
 }))
 
 // ── Auth (before audit logger to avoid logging auth requests) ──
