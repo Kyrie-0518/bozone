@@ -3,131 +3,132 @@ import { tiktokShop, product as productTable, syncLog } from '../db-schema.js'
 import { apiCall } from './tiktok-auth.js'
 import { eq, and } from 'drizzle-orm'
 
-interface TikTokProductDetail {
-  product_id: string
-  product_status: string
-  title: string
-  description?: string
+// Per SDK ProductSearch response
+interface TKProductBrief {
+  id: string
+  name?: string
+  status?: string
   create_time?: number
-  category?: { id: string; name: string }
+  update_time?: number
   skus?: Array<{
     id: string
     seller_sku: string
-    name: string
-    price: { amount: string; currency: string }
-    stock: number
-    package_weight: number
-    image?: { thumb_url: string }
+    sku_name?: string
+    price?: {
+      amount?: { currency: string; value_string: string }
+    }
+    stock?: number
+    package_weight_g?: number
+    image?: any
   }>
-  main_images?: Array<{ url: string }>
-  package_weight?: number
+  images?: Array<any>
+  description?: string
+  category_id?: string
+  category_name?: string
 }
 
-// Sync products for a specific shop
+function extractAmount(val: any): number {
+  if (!val) return 0
+  if (val.value_string) return parseFloat(val.value_string) || 0
+  if (val.amount?.value_string) return parseFloat(val.amount.value_string) || 0
+  return parseFloat(String(val)) || 0
+}
+
+const statusMap: Record<string, string> = {
+  ACTIVE: '上架', INACTIVE: '下架', FROZEN: '冻结',
+  DELETED: '已删除', DRAFT: '草稿', REJECTED: '驳回',
+}
+
+// Sync products for a specific shop (with pagination)
 export async function syncShopProducts(shopRow: typeof tiktokShop.$inferSelect): Promise<{
   total: number; success: number; fail: number
 }> {
   const now = new Date().toISOString()
   const syncRun = await db.insert(syncLog).values({
-    shopId: shopRow.id,
-    type: 'product',
-    status: 'running',
-    total: 0,
-    success: 0,
-    fail: 0,
-    startedAt: now,
-    createdAt: now,
+    shopId: shopRow.id, type: 'product', status: 'running',
+    total: 0, success: 0, fail: 0, startedAt: now, createdAt: now,
   } as any)
   const logId = Number((syncRun as any).insertId || 0)
 
-  let token = shopRow.accessToken
+  const token = shopRow.accessToken
   const shopCipher = shopRow.shopCipher
   let total = 0, success = 0, fail = 0
 
   try {
-    // 1. Search products
-    const searchResult = await apiCall(
-      '/product/202309/products/search',
-      token,
-      shopCipher,
-      {
-        method: 'POST',
-        body: { page_size: 100 },
-      },
-    )
+    console.log(`[ProductSync] Searching ALL products for shop ${shopRow.shopId} ...`)
 
-    const productList: Array<{ product_id: string; product_status: string }> =
-      searchResult?.data?.products || searchResult?.data?.product_list || []
+    const allProducts: TKProductBrief[] = []
+    let pageToken = ''
+    let pageCount = 0
+    const MAX_PAGES = 100
 
-    total = productList.length
+    do {
+      const queryExtras: Record<string, string> = { page_size: '50' }
+      if (pageToken) queryExtras.page_token = pageToken
+
+      // Per SDK: page_size/page_token/shop_cipher are QUERY params
+      const searchResult = await apiCall(
+        '/product/202309/products/search',
+        token,
+        shopCipher,
+        {
+          method: 'POST',
+          body: {},
+          _extraQuery: queryExtras,
+        } as any,
+      )
+
+      const pageList: TKProductBrief[] = searchResult?.data?.products || searchResult?.data?.product_list || []
+      allProducts.push(...pageList)
+      pageToken = searchResult?.data?.next_page_token || ''
+      pageCount++
+
+      console.log(`[ProductSync] Page ${pageCount}: got ${pageList.length} products, total=${allProducts.length}, hasMore=${!!pageToken}`)
+
+      if (pageToken) await new Promise(r => setTimeout(r, 500))
+    } while (pageToken && pageCount < MAX_PAGES)
+
+    total = allProducts.length
     console.log(`[ProductSync] Found ${total} products for shop ${shopRow.shopId}`)
 
-    // 2. For each product, get details and upsert
-    for (const brief of productList) {
+    // Upsert each product
+    for (const tkProd of allProducts) {
       try {
-        const detail = await apiCall(
-          `/product/202309/products/${brief.product_id}`,
-          token,
-          shopCipher,
-          { method: 'GET' },
-        )
+        const productId = tkProd.id
+        if (!productId) { fail++; continue }
 
-        const tkProduct: TikTokProductDetail = detail?.data || detail
-        if (!tkProduct || !tkProduct.product_id) {
-          fail++
-          continue
+        const skus = tkProd.skus || []
+        let mainImage: string = tkProd.images?.[0]?.url || ''
+        if (!mainImage && skus[0]) {
+          const img = skus[0].image
+          if (typeof img === 'string') mainImage = img
+          else if (Array.isArray(img)) mainImage = img[0]?.url || ''
+          else if (img?.url) mainImage = img.url
         }
 
-        // Map status
-        const statusMap: Record<string, string> = {
-          ACTIVE: '上架', INACTIVE: '下架',
-          FROZEN: '冻结', DELETED: '已删除',
-        }
-
-        // Build SKUs JSON
-        const skus = (tkProduct.skus || []).map(s => ({
-          id: s.id,
-          sellerSku: s.seller_sku || '',
-          name: s.name || '',
-          price: parseFloat(s.price?.amount || '0'),
-          stock: s.stock || 0,
-          weight: s.package_weight || 0,
-          image: s.image?.thumb_url || '',
-        }))
-
-        // Main images
-        const mainImage = tkProduct.main_images?.[0]?.url || ''
-        const allImages = (tkProduct.main_images || []).map(i => i.url)
-
-        // Total stock sum
-        const totalStock = skus.reduce((sum, s) => sum + s.stock, 0)
-
-        // Total weight (use product-level or first SKU)
-        const totalWeight = tkProduct.package_weight || skus[0]?.weight || 0
-
-        // Lowest SKU price as default sell price
+        const allImages = (tkProd.images || []).map((i: any) => i.url).filter(Boolean)
+        const totalStock = skus.reduce((sum: number, s: any) => sum + (s.stock || 0), 0)
         const minPrice = skus.length > 0
-          ? Math.min(...skus.map(s => s.price))
+          ? Math.min(...skus.map((s: any) => extractAmount(s.price)))
           : 0
 
         const productData = {
-          name: tkProduct.title || '',
-          sku: skus[0]?.sellerSku || '',
+          name: tkProd.name || '',
+          sku: skus[0]?.seller_sku || '',
           image: mainImage,
           images: JSON.stringify(allImages),
-          category: tkProduct.category?.name || '',
-          weight: totalWeight,
+          category: tkProd.category_name || '',
+          weight: skus[0]?.package_weight_g ? skus[0].package_weight_g / 1000 : 0,
           stock: totalStock,
           sellPrice: minPrice,
-          platformProductId: tkProduct.product_id,
-          status: statusMap[tkProduct.product_status] || tkProduct.product_status,
+          platformProductId: productId,
+          status: statusMap[tkProd.status || ''] || tkProd.status || '未知',
           shopId: shopRow.id,
           updatedAt: now,
         }
 
-        // Upsert by platform_product_id
         const existing = await db.select().from(productTable)
-          .where(eq(productTable.platformProductId, tkProduct.product_id))
+          .where(eq(productTable.platformProductId, productId))
           .limit(1)
 
         if (existing.length > 0) {
@@ -135,9 +136,7 @@ export async function syncShopProducts(shopRow: typeof tiktokShop.$inferSelect):
             .where(eq(productTable.id, existing[0].id))
         } else {
           await db.insert(productTable).values({
-            ...productData,
-            createdAt: now,
-            costPrice: existing.length > 0 ? existing[0].costPrice : 0, // keep existing cost
+            ...productData, createdAt: now, costPrice: 0,
           } as any)
         }
 
@@ -146,39 +145,28 @@ export async function syncShopProducts(shopRow: typeof tiktokShop.$inferSelect):
           console.log(`[ProductSync] Progress: ${success}/${total}`)
         }
       } catch (e: any) {
-        console.error(`[ProductSync] Failed product ${brief.product_id}:`, e.message)
+        console.error(`[ProductSync] Failed product ${tkProd.id}:`, e.message?.slice(0, 200))
         fail++
       }
     }
 
-    // Update sync timestamp
-    await db.update(tiktokShop).set({
-      lastSyncedAt: now,
-      updatedAt: now,
-    }).where(eq(tiktokShop.id, shopRow.id))
+    await db.update(tiktokShop).set({ lastSyncedAt: now, updatedAt: now })
+      .where(eq(tiktokShop.id, shopRow.id))
 
   } catch (e: any) {
     console.error('[ProductSync] Sync failed:', e.message)
     if (logId) {
       await db.update(syncLog).set({
-        status: 'failed',
-        error: e.message,
-        total,
-        success,
-        fail,
+        status: 'failed', error: e.message, total, success, fail,
         finishedAt: new Date().toISOString(),
       }).where(eq(syncLog.id, logId))
     }
     return { total, success, fail }
   }
 
-  // Update sync log
   if (logId) {
     await db.update(syncLog).set({
-      status: 'completed',
-      total,
-      success,
-      fail,
+      status: 'completed', total, success, fail,
       finishedAt: new Date().toISOString(),
     }).where(eq(syncLog.id, logId))
   }
