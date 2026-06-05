@@ -3,33 +3,36 @@ import { tiktokShop, order, orderItem, syncLog, product as productTable } from '
 import { apiCall, refreshToken } from './tiktok-auth.js'
 import { eq, and } from 'drizzle-orm'
 
-interface TikTokOrder {
-  order_id: string
-  order_status: string
-  create_time: number
-  update_time: number
-  buyer_name?: string
-  order_lines?: Array<{
+// TikTok OrderSearch response shape (per official SDK)
+interface TKOrderBrief {
+  id: string
+  status: string
+  createTime?: number
+  updateTime?: number
+  buyerNickname?: string
+  payment?: {
+    amount?: { currency: string; value_string: string }
+    platform_discount?: { currency: string; value_string: string }
+    shipping_fee?: { currency: string; value_string: string }
+    tax?: { currency: string; value_string: string }
+    transaction_amount?: { currency: string; value_string: string }
+  }
+  lineItems?: Array<{
     id: string
-    sku_id: string
+    sku_id?: string
     seller_sku: string
     product_name: string
-    sku_name: string
+    sku_name?: string
     quantity: number
-    price: { amount: string; currency: string }
+    price?: {
+      amount?: { currency: string; value_string: string }
+    }
   }>
-  payment?: {
-    total_amount: string
-    currency: string
-    shipping_fee: string
-    platform_discount: string
-    tax: string
+  recipientAddress?: {
+    name?: string
   }
-  delivery?: {
-    recipient_name: string
-    tracking_number: string
-    shipping_provider: string
-  }
+  trackingNumber?: string
+  shippingProvider?: string
 }
 
 // TikTok order status → local status mapping
@@ -48,6 +51,17 @@ function mapOrderStatus(tkStatus: string): string {
     RETURN_IN_PROGRESS: '退货中',
   }
   return map[tkStatus] || tkStatus
+}
+
+// Extract numeric value from TikTok price object (handles nested amount wrapper)
+function extractAmount(val: any): number {
+  if (!val) return 0
+  // Direct: { value_string: "10.99" }
+  if (val.value_string) return parseFloat(val.value_string) || 0
+  // Nested: { amount: { value_string: "10.99" } }
+  if (val.amount?.value_string) return parseFloat(val.amount.value_string) || 0
+  // Fallback: try parsing as string/number directly
+  return parseFloat(String(val)) || 0
 }
 
 // Sync orders for a specific shop
@@ -72,73 +86,68 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
   let total = 0, success = 0, fail = 0
 
   try {
-    // 1. Search orders (last 7 days)
-    // NOTE per SDK: page_size/sort_order/sort_field/shop_cipher are QUERY params,
-    //   only filter fields like create_time_ge go in JSON body
+    // 1. Search orders (last 7 days) — per SDK spec:
+    //    Query params: page_size, sort_field, sort_order, shop_cipher
+    //    Body: create_time_ge (Unix timestamp filter)
     const fromTime = Math.floor(Date.now() / 1000) - 7 * 86400
+    console.log(`[OrderSync] Searching orders from ${new Date(fromTime * 1000).toISOString()} ...`)
+
     const searchResult = await apiCall(
       '/order/202309/orders/search',
       token,
       shopCipher,
       {
         method: 'POST',
-        // Query params are set via extraParams in apiCall → call()
-        // We need to pass page_size/sort as query params
-        body: {
-          create_time_ge: fromTime,
-        },
-        _extraQuery: { page_size: '50', sort_field: 'create_time', sort_order: 'ASC' },
+        body: { create_time_ge: fromTime },
+        _extraQuery: { page_size: '50', sort_field: 'create_time', sort_order: 'DESC' },
       } as any,
     )
 
-    const orderList: Array<{ order_id: string; order_status: string }> =
-      searchResult?.data?.orders || searchResult?.data?.order_list || []
-
+    // Response structure: { data: { orders: [...], next_page_token: "..." } }
+    const orderList: TKOrderBrief[] = searchResult?.data?.orders || []
     total = orderList.length
     console.log(`[OrderSync] Found ${total} orders for shop ${shopRow.shopId}`)
 
-    // 2. For each order, get details and upsert
-    for (const brief of orderList) {
+    // 2. Each search result already has full details — upsert directly
+    for (const tkOrder of orderList) {
       try {
-        // Get order detail
-        const detail = await apiCall(
-          `/order/202309/orders/${brief.order_id}`,
-          token,
-          shopCipher,
-          { method: 'GET' },
-        )
-
-        const tkOrder: TikTokOrder = detail?.data || detail
-        if (!tkOrder || !tkOrder.order_id) {
+        const orderId = tkOrder.id
+        if (!orderId) {
+          console.warn('[OrderSync] Skipping order without id')
           fail++
           continue
         }
 
-        // Check if already exists
-        const existing = await db.select().from(order)
-          .where(eq(order.orderNo, tkOrder.order_id))
-          .limit(1)
+        // Payment extraction
+        const pay = tkOrder.payment || {}
+        const totalAmt = extractAmount(pay.amount) || extractAmount({ value_string: String((pay as any).transaction_amount || (pay as any).total_amount) })
+        const shipFee = extractAmount(pay.shipping_fee)
+        const discount = extractAmount(pay.platform_discount)
+        const taxes = extractAmount(pay.tax)
 
         const orderData = {
-          orderNo: tkOrder.order_id,
+          orderNo: orderId,
           shopId: shopRow.id,
-          buyerName: tkOrder.buyer_name || tkOrder.delivery?.recipient_name || '',
-          status: mapOrderStatus(tkOrder.order_status),
-          paymentStatus: tkOrder.order_status === 'UNPAID' ? 'unpaid' : 'paid',
-          logisticsStatus: tkOrder.order_status || '',
-          trackingNo: tkOrder.delivery?.tracking_number || '',
-          carrier: tkOrder.delivery?.shipping_provider || '',
-          itemTotal: parseFloat(tkOrder.payment?.total_amount || '0'),
-          shippingFee: parseFloat(tkOrder.payment?.shipping_fee || '0'),
-          discount: parseFloat(tkOrder.payment?.platform_discount || '0'),
-          taxes: parseFloat(tkOrder.payment?.tax || '0'),
-          actualAmount: parseFloat(tkOrder.payment?.total_amount || '0'),
-          currency: tkOrder.payment?.currency || 'MYR',
-          orderTime: tkOrder.create_time
-            ? new Date(tkOrder.create_time * 1000).toISOString()
-            : now,
+          buyerName: tkOrder.buyerNickname || tkOrder.recipientAddress?.name || '',
+          status: mapOrderStatus(tkOrder.status),
+          paymentStatus: tkOrder.status === 'UNPAID' ? 'unpaid' : 'paid',
+          logisticsStatus: tkOrder.status || '',
+          trackingNo: tkOrder.trackingNumber || '',
+          carrier: tkOrder.shippingProvider || '',
+          itemTotal: totalAmt,
+          shippingFee: shipFee,
+          discount: discount,
+          taxes: taxes,
+          actualAmount: Math.max(0, totalAmt - discount),
+          currency: pay.amount?.currency || 'MYR',
+          orderTime: tkOrder.createTime ? new Date(tkOrder.createTime * 1000).toISOString() : now,
           updatedAt: now,
         }
+
+        // Check if already exists
+        const existing = await db.select().from(order)
+          .where(eq(order.orderNo, orderId))
+          .limit(1)
 
         if (existing.length > 0) {
           // Update
@@ -146,6 +155,28 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
 
           // Remove old items & reinsert
           await db.delete(orderItem).where(eq(orderItem.orderId, existing[0].id))
+
+          // Re-insert items
+          const lines = tkOrder.lineItems || []
+          for (const line of lines) {
+            let pId: number | null = null
+            if (line.seller_sku) {
+              const products = await db.select().from(productTable)
+                .where(eq(productTable.sku, line.seller_sku)).limit(1)
+              if (products.length > 0) pId = products[0].id
+            }
+
+            const itemPrice = extractAmount(line.price)
+            await db.insert(orderItem).values({
+              orderId: existing[0].id,
+              productId: pId as any,
+              sku: line.seller_sku || line.sku_id || '',
+              productName: line.product_name || line.sku_name || '',
+              quantity: line.quantity || 1,
+              unitPrice: itemPrice,
+              subtotal: itemPrice * (line.quantity || 1),
+            } as any)
+          }
         } else {
           // Insert
           const insertResult = await db.insert(order).values({
@@ -154,23 +185,21 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
           } as any)
           const newOrderId = Number((insertResult as any).insertId)
 
-          // Insert order items
-          const lines = tkOrder.order_lines || []
+          // Insert items
+          const lines = tkOrder.lineItems || []
           for (const line of lines) {
-            // Try to match product by seller_sku
             let pId: number | null = null
             if (line.seller_sku) {
               const products = await db.select().from(productTable)
-                .where(eq(productTable.sku, line.seller_sku))
-                .limit(1)
+                .where(eq(productTable.sku, line.seller_sku)).limit(1)
               if (products.length > 0) pId = products[0].id
             }
 
-            const itemPrice = parseFloat(line.price?.amount || '0')
+            const itemPrice = extractAmount(line.price)
             await db.insert(orderItem).values({
               orderId: newOrderId,
               productId: pId as any,
-              sku: line.seller_sku || line.sku_id,
+              sku: line.seller_sku || line.sku_id || '',
               productName: line.product_name || line.sku_name || '',
               quantity: line.quantity || 1,
               unitPrice: itemPrice,
@@ -184,7 +213,7 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
           console.log(`[OrderSync] Progress: ${success}/${total}`)
         }
       } catch (e: any) {
-        console.error(`[OrderSync] Failed order ${brief.order_id}:`, e.message)
+        console.error(`[OrderSync] Failed order ${tkOrder.id}:`, e.message?.slice(0, 200))
         fail++
       }
     }
@@ -197,7 +226,7 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
 
   } catch (e: any) {
     console.error('[OrderSync] Sync failed:', e.message)
-    if (syncRun) {
+    if (logId) {
       await db.update(syncLog).set({
         status: 'failed',
         error: e.message,
