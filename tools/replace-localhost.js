@@ -1,0 +1,7 @@
+const fs = require('fs')
+const path = require('path')
+const file = path.resolve(__dirname, 'client/src/features/shops/index.tsx')
+let content = fs.readFileSync(file, 'utf8')
+content = content.split('http://localhost:3001').join('http://8.138.36.120:3001')
+fs.writeFileSync(file, content)
+console.log('OK - replaced in shops/index.tsx')

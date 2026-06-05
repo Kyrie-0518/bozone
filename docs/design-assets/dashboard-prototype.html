@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Bozone · Dashboard Prototype</title>
+<style>
+/* ── Bozone Design System: Warm Industrial ── */
+:root {
+  --bg-page: #F7F5F2;
+  --bg-surface: #FFFFFF;
+  --bg-surface-alt: #F0EDE8;
+  --border: #E5E0D8;
+  --border-strong: #D4CEC4;
+  --text-primary: #1C1917;
+  --text-secondary: #78716C;
+  --text-tertiary: #A8A29E;
+  --accent: #D97706;
+  --accent-light: #FDE68A;
+  --accent-dark: #92400E;
+  --success: #059669;
+  --danger: #DC2626;
+  --shadow-sm: 0 2px 8px rgba(28,25,23,0.06);
+  --shadow-md: 0 4px 16px rgba(28,25,23,0.08);
+  --shadow-lg: 0 8px 32px rgba(28,25,23,0.10);
+  --radius-card: 10px;
+  --radius-input: 6px;
+  --radius-modal: 14px;
+  --sider-bg: #1C1917;
+  --sider-text: #A8A29E;
+  --sider-active: #F7F5F2;
+  --sider-hover: #2D2925;
+}
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+html { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; color: var(--text-primary); background: var(--bg-page); }
+body { display:flex; min-height:100vh; }
+body.dark { --bg-page:#1C1917; --bg-surface:#2D2925; --bg-surface-alt:#3D3832; --border:#3D3832; --border-strong:#504A42; --text-primary:#F7F5F2; --text-secondary:#A8A29E; --text-tertiary:#78716C; --shadow-sm:0 2px 8px rgba(0,0,0,0.3); --shadow-md:0 4px 16px rgba(0,0,0,0.4); --shadow-lg:0 8px 32px rgba(0,0,0,0.5); --sider-bg:#141210; }
+
+/* ── Sidebar ── */
+.sider { width:240px; min-height:100vh; background:var(--sider-bg); display:flex; flex-direction:column; flex-shrink:0; }
+.sider-logo { padding:20px 24px; display:flex; align-items:center; gap:12px; border-bottom:1px solid var(--sider-hover); }
+.sider-logo .logo-icon { width:32px; height:32px; background:var(--accent); border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; color:#FFF; }
+.sider-logo .logo-text { font-size:18px; font-weight:700; color:var(--sider-active); letter-spacing:-0.5px; }
+.sider-nav { flex:1; padding:12px; display:flex; flex-direction:column; gap:2px; }
+.nav-item { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:8px; color:var(--sider-text); cursor:pointer; transition:all 0.15s; font-size:13px; text-decoration:none; }
+.nav-item:hover { background:var(--sider-hover); color:var(--sider-active); }
+.nav-item.active { background:rgba(217,119,6,0.15); color:var(--accent); font-weight:600; }
+.nav-item .nav-icon { width:20px; text-align:center; font-size:16px; }
+.nav-section { padding:16px 12px 6px; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--text-tertiary); opacity:0.5; }
+.sider-footer { padding:12px; border-top:1px solid var(--sider-hover); }
+.sider-footer .theme-btn { display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:8px; color:var(--sider-text); cursor:pointer; font-size:12px; border:none; background:none; width:100%; transition:0.15s; }
+.sider-footer .theme-btn:hover { background:var(--sider-hover); color:var(--sider-active); }
+
+/* ── Main ── */
+.main { flex:1; overflow-y:auto; }
+.header { height:56px; background:var(--bg-surface); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; padding:0 32px; position:sticky; top:0; z-index:10; }
+.header-left { display:flex; align-items:center; gap:16px; }
+.breadcrumb { font-size:12px; color:var(--text-tertiary); }
+.breadcrumb span { color:var(--text-primary); font-weight:500; }
+.header-right { display:flex; align-items:center; gap:16px; }
+.header-right .icon-btn { width:36px; height:36px; border-radius:8px; border:none; background:transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); font-size:18px; transition:0.15s; }
+.header-right .icon-btn:hover { background:var(--bg-surface-alt); }
+.avatar { width:32px; height:32px; border-radius:50%; background:var(--accent); color:#FFF; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; }
+
+/* ── Content ── */
+.content { padding:32px; }
+.page-title { font-size:28px; font-weight:700; letter-spacing:-0.5px; margin-bottom:4px; }
+.page-subtitle { font-size:14px; color:var(--text-secondary); margin-bottom:28px; }
+
+/* ── Stat Cards ── */
+.stat-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-bottom:24px; }
+.stat-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-card); padding:20px 24px; box-shadow:var(--shadow-sm); transition:0.2s; }
+.stat-card:hover { box-shadow:var(--shadow-md); border-color:var(--border-strong); transform:translateY(-1px); }
+.stat-card .stat-label { font-size:12px; color:var(--text-secondary); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px; }
+.stat-card .stat-value { font-size:26px; font-weight:700; letter-spacing:-1px; margin-bottom:4px; font-variant-numeric:tabular-nums; }
+.stat-card .stat-change { font-size:12px; }
+.stat-card .stat-change.up { color:var(--success); }
+.stat-card .stat-change.down { color:var(--danger); }
+.stat-card.accent { border-left:3px solid var(--accent); }
+
+/* ── Charts Row ── */
+.chart-row { display:grid; grid-template-columns:1.5fr 1fr; gap:16px; margin-bottom:24px; }
+.chart-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-card); box-shadow:var(--shadow-sm); overflow:hidden; }
+.chart-card .chart-header { padding:16px 24px; border-bottom:1px solid var(--border); font-size:16px; font-weight:600; display:flex; justify-content:space-between; align-items:center; }
+.chart-card .chart-body { padding:20px 24px; min-height:280px; }
+.chart-placeholder { width:100%; height:240px; display:flex; align-items:flex-end; gap:4px; }
+.bar { flex:1; background:var(--bg-surface-alt); border-radius:4px 4px 0 0; min-height:4px; transition:0.15s; }
+.bar:hover { background:var(--accent); }
+.bar.top { background:var(--accent); }
+.trend-svg { width:100%; height:240px; }
+.trend-line { fill:none; stroke:var(--accent); stroke-width:2; }
+.trend-area { fill:rgba(217,119,6,0.08); }
+.trend-grid line { stroke:var(--border); stroke-width:0.5; }
+
+/* ── Table ── */
+.table-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-card); box-shadow:var(--shadow-sm); overflow:hidden; }
+.table-card .table-header { padding:16px 24px; border-bottom:1px solid var(--border); font-size:16px; font-weight:600; display:flex; justify-content:space-between; align-items:center; }
+table { width:100%; border-collapse:collapse; }
+thead th { background:var(--bg-surface-alt); padding:10px 16px; font-size:12px; font-weight:600; color:var(--text-secondary); text-align:left; border-bottom:1px solid var(--border); text-transform:uppercase; letter-spacing:0.5px; }
+tbody td { padding:12px 16px; border-bottom:1px solid var(--border); font-size:13px; font-variant-numeric:tabular-nums; }
+tbody tr:hover { background:var(--bg-surface-alt); }
+.status-tag { display:inline-block; padding:2px 10px; border-radius:var(--radius-input); font-size:11px; font-weight:500; }
+.status-tag.success { background:#ECFDF5; color:var(--success); }
+.status-tag.pending { background:#FFF7ED; color:var(--accent); }
+.status-tag.shipped { background:#EFF6FF; color:#2563EB; }
+
+/* ── Responsive ── */
+@media (max-width:1200px) { .stat-grid { grid-template-columns:repeat(2,1fr); } .chart-row { grid-template-columns:1fr; } }
+@media (max-width:768px) { .sider { display:none; } .content { padding:16px; } .stat-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<!-- Sidebar -->
+<aside class="sider">
+  <div class="sider-logo">
+    <div class="logo-icon">B</div>
+    <span class="logo-text">Bozone</span>
+  </div>
+  <nav class="sider-nav">
+    <div class="nav-section">Main</div>
+    <a class="nav-item active"><span class="nav-icon">📊</span> Dashboard</a>
+    <a class="nav-item"><span class="nav-icon">📦</span> 店铺管理</a>
+    <a class="nav-item"><span class="nav-icon">📋</span> 订单管理</a>
+    <a class="nav-item"><span class="nav-icon">🛒</span> 商品管理</a>
+    <div class="nav-section">TikTok</div>
+    <a class="nav-item"><span class="nav-icon">🤝</span> 达人BD</a>
+    <a class="nav-item"><span class="nav-icon">🎬</span> AI 工作室</a>
+    <div class="nav-section">Finance</div>
+    <a class="nav-item"><span class="nav-icon">💰</span> 财务核算</a>
+    <div class="nav-section">System</div>
+    <a class="nav-item"><span class="nav-icon">⚙</span> 系统设置</a>
+  </nav>
+  <div class="sider-footer">
+    <button class="theme-btn" onclick="document.body.classList.toggle('dark')">
+      <span class="nav-icon">🌓</span> Toggle Dark Mode
+    </button>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main">
+  <header class="header">
+    <div class="header-left">
+      <span class="breadcrumb">Bozone <span>/ Dashboard</span></span>
+    </div>
+    <div class="header-right">
+      <button class="icon-btn">🔍</button>
+      <button class="icon-btn">🔔</button>
+      <div class="avatar">KY</div>
+    </div>
+  </header>
+
+  <div class="content">
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle">跨境运营总览 · 2026年5月28日</p>
+
+    <!-- Stat Cards -->
+    <div class="stat-grid">
+      <div class="stat-card accent">
+        <div class="stat-label">今日营收 (RMB)</div>
+        <div class="stat-value">¥12,580</div>
+        <div class="stat-change up">▲ 12.5% vs 昨日</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">今日订单</div>
+        <div class="stat-value">347</div>
+        <div class="stat-change up">▲ 8.3% vs 昨日</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">今日净利润 (RMB)</div>
+        <div class="stat-value">¥4,210</div>
+        <div class="stat-change up">▲ 15.2% vs 昨日</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">ROI</div>
+        <div class="stat-value">18.2%</div>
+        <div class="stat-change up">▲ 1.2pp vs 昨日</div>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="chart-row">
+      <div class="chart-card">
+        <div class="chart-header">
+          <span>利润趋势 · 近30天</span>
+          <span style="font-size:12px;color:var(--text-tertiary)">RMB</span>
+        </div>
+        <div class="chart-body">
+          <svg class="trend-svg" viewBox="0 0 600 220" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.15"/>
+                <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <g class="trend-grid">
+              <line x1="0" y1="0" x2="600" y2="0"/><line x1="0" y1="55" x2="600" y2="55"/>
+              <line x1="0" y1="110" x2="600" y2="110"/><line x1="0" y1="165" x2="600" y2="165"/>
+              <line x1="0" y1="220" x2="600" y2="220"/>
+            </g>
+            <path class="trend-area" d="M0,180 C40,170 80,160 120,150 C160,140 200,120 240,100 C280,80 320,70 360,60 C400,50 440,45 480,35 C520,25 560,30 600,20 L600,220 L0,220 Z"/>
+            <path class="trend-line" d="M0,180 C40,170 80,160 120,150 C160,140 200,120 240,100 C280,80 320,70 360,60 C400,50 440,45 480,35 C520,25 560,30 600,20"/>
+          </svg>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header"><span>热销产品 Top 5</span></div>
+        <div class="chart-body">
+          <div class="chart-placeholder">
+            <div class="bar top" style="height:100%"></div>
+            <div class="bar top" style="height:82%"></div>
+            <div class="bar top" style="height:65%"></div>
+            <div class="bar" style="height:48%"></div>
+            <div class="bar" style="height:35%"></div>
+          </div>
+          <div style="display:flex;gap:4px;margin-top:8px;font-size:10px;color:var(--text-tertiary);justify-content:space-around">
+            <span>除味剂</span><span>清洁膏</span><span>除味蛋</span><span>除味棒</span><span>清洁片</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Orders Table -->
+    <div class="table-card">
+      <div class="table-header">
+        <span>最近订单</span>
+        <span style="font-size:12px;color:var(--accent);cursor:pointer">查看全部 →</span>
+      </div>
+      <table>
+        <thead><tr><th>订单号</th><th>店铺</th><th>产品</th><th>金额 (MYR)</th><th>跨境运费 (RMB)</th><th>净利润 (RMB)</th><th>状态</th><th>时间</th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="color:var(--accent)">5833133557...</td><td>TikTok MY</td><td>冰箱除味剂</td><td>21.49</td><td>¥3.35</td><td style="color:var(--success);font-weight:600">¥22.12</td>
+            <td><span class="status-tag success">已发货</span></td><td style="color:var(--text-secondary)">今天 14:22</td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent)">5837850537...</td><td>TikTok MY</td><td>多功能清洁膏</td><td>21.80</td><td>¥11.35</td><td style="color:var(--success);font-weight:600">¥14.69</td>
+            <td><span class="status-tag success">已发货</span></td><td style="color:var(--text-secondary)">今天 12:15</td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent)">5837787679...</td><td>Shopee MY</td><td>冰箱除味剂</td><td>21.80</td><td>¥3.35</td><td style="color:var(--success);font-weight:600">¥22.55</td>
+            <td><span class="status-tag shipped">运输中</span></td><td style="color:var(--text-secondary)">今天 09:48</td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent)">5837778806...</td><td>TikTok MY</td><td>洗衣机清洁片</td><td>18.50</td><td>¥5.16</td><td style="color:var(--danger);font-weight:600">-¥4.31</td>
+            <td><span class="status-tag pending">待发货</span></td><td style="color:var(--text-secondary)">昨天 22:30</td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent)">5837690012...</td><td>TikTok MY</td><td>冰箱除味盒</td><td>15.90</td><td>¥3.87</td><td style="color:var(--success);font-weight:600">¥8.92</td>
+            <td><span class="status-tag success">已发货</span></td><td style="color:var(--text-secondary)">昨天 18:05</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+</body>
+</html>

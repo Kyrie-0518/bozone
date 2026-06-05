@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Bozone - 授权处理中...</title></head>
+<body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:system-ui;background:#faf6f0;">
+<div style="text-align:center">
+  <div id="status" style="font-size:18px;color:#1c1917;">⏳ 正在处理授权...</div>
+  <div id="error" style="margin-top:12px;font-size:14px;color:#dc2626;display:none;"></div>
+</div>
+<script>
+(async () => {
+  const code = new URLSearchParams(location.search).get('code')
+  if (!code) {
+    document.getElementById('status').innerText = '❌ 缺少授权码'
+    return
+  }
+  document.getElementById('status').innerText = '🔄 换取访问令牌...'
+  try {
+    const res = await fetch(`http://localhost:3001/api/tiktok/callback?code=${encodeURIComponent(code)}&state=direct&fromPage=1`)
+    if (res.redirected) {
+      document.getElementById('status').innerText = '✅ 授权成功！店铺已添加'
+      setTimeout(() => location.href = 'http://localhost:5174/shops', 1500)
+    } else {
+      const err = await res.text()
+      throw new Error(err)
+    }
+  } catch (e) {
+    document.getElementById('status').innerText = '❌ 处理失败'
+    document.getElementById('error').style.display = 'block'
+    document.getElementById('error').innerText = e.message
+  }
+})()
+</script>
+</body>
+</html>

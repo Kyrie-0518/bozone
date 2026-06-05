@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+logs/
+.env
+data/*.db
+*.tar.gz
+*.zip
+.DS_Store
+Thumbs.db
