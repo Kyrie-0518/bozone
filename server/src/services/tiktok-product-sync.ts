@@ -73,7 +73,6 @@ export async function syncShopProducts(shopRow: typeof tiktokShop.$inferSelect):
         shopCipher,
         {
           method: 'POST',
-          body: {},
           _extraQuery: queryExtras,
         } as any,
       )

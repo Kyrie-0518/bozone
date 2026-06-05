@@ -52,6 +52,12 @@ async function call(
 
   const timestamp = Math.floor(Date.now() / 1000).toString()
   const params: Record<string, string> = { app_key: appKey, sign_method: 'HMAC-SHA256', timestamp, ...extraParams }
+  
+  // Debug: log all query params before signing
+  if (path.includes('/search') || path.includes('products')) {
+    console.log(`[TikTok API] ${opts?.method || 'GET'} ${path} params:`, JSON.stringify(Object.keys(params)), 'body:', !!opts?.body)
+  }
+  
   params.sign = sign(params, path, opts?.body)
 
   const url = `${apiBase}${path}?${new URLSearchParams(params)}`
