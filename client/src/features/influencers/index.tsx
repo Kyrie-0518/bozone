@@ -7,8 +7,6 @@ import {
   Package,
   DollarSign,
   BarChart3,
-  Truck,
-  Video,
 } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'

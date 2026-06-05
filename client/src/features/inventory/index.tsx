@@ -3,7 +3,6 @@ import {
   Package,
   Search,
   AlertTriangle,
-  Plus,
   Truck,
   Warehouse,
   ArrowDownUp,
@@ -21,7 +20,6 @@ import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'

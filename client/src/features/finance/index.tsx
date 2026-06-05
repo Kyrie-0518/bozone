@@ -37,7 +37,6 @@ import {
   AreaChart,
   Area,
   CartesianGrid,
-  CartesianGrid,
   ResponsiveContainer,
   Tooltip,
   XAxis,
