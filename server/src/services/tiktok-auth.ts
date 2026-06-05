@@ -1,78 +1,56 @@
+/**
+ * TikTok Shop Partner API Service
+ * Based on official TikTok Shop Node.js SDK
+ * Ref: https://partner.tiktokshop.com/docv2/page/67c83e0799a75104986ae498
+ */
 import crypto from 'node:crypto'
 
-// ── Dynamic config (read fresh every call, not module-level cached) ──
-function getConfig() {
-  return {
-    APP_KEY: process.env.TIKTOK_APP_KEY || '',
-    APP_SECRET: process.env.TIKTOK_APP_SECRET || '',
-    SERVICE_ID: process.env.TIKTOK_SERVICE_ID || process.env.TIKTOK_APP_KEY || '',
-    REDIRECT_URI: process.env.TIKTOK_REDIRECT_URI || '',
-    IS_SANDBOX: process.env.TIKTOK_ENV === 'sandbox',
-    API_BASE: process.env.TIKTOK_API_BASE || (process.env.TIKTOK_ENV === 'sandbox'
-      ? 'https://open-api-sandbox.tiktokglobalshop.com'
-      : 'https://open-api.tiktokglobalshop.com'),
-    AUTH_HOST: 'https://auth.tiktok-shops.com',
-    SCOPES: ['seller.order', 'seller.product', 'seller.shop', 'seller.finance'].join(','),
-  }
+// ── Env helpers (read fresh each call) ──
+function env(key: string, fallback = ''): string {
+  return process.env[key] || fallback
 }
 
-// ── State store ──
-const stateStore = new Map<string, { createdAt: number }>()
-const STATE_TTL_MS = 5 * 60 * 1000
-setInterval(() => {
-  const now = Date.now()
-  for (const [k, v] of stateStore) if (now - v.createdAt > STATE_TTL_MS) stateStore.delete(k)
-}, 60_000)
+// ── Official signing: https://partner.tiktokshop.com/docv2/page/67c83e0799a75104986ae498 ──
+function sign(params: Record<string, string>, path: string, body?: any): string {
+  const appSecret = env('TIKTOK_APP_SECRET')
+  if (!appSecret) throw new Error('TIKTOK_APP_SECRET missing')
 
-function generateState(): string {
-  const { APP_SECRET } = getConfig()
-  const uuid = crypto.randomUUID()
-  const sig = crypto.createHmac('sha256', APP_SECRET).update(uuid).digest('hex').slice(0, 16)
-  const state = `${uuid}.${sig}`
-  stateStore.set(state, { createdAt: Date.now() })
-  return state
-}
-
-function verifyState(state: string): boolean {
-  const entry = stateStore.get(state)
-  if (!entry) return false
-  stateStore.delete(state)
-  return Date.now() - entry.createdAt <= STATE_TTL_MS
-}
-
-// ── Official TikTok signing ──
-function officialSign(appSecret: string, params: Record<string, string>, path: string, body?: any): string {
-  const sortedKeys = Object.keys(params)
+  // Step 1-2: sort keys, concat {key}{value}
+  const sorted = Object.keys(params)
     .filter(k => k !== 'sign' && k !== 'access_token')
     .sort()
-  const paramString = sortedKeys.map(k => `${k}${params[k]}`).join('')
-  let signString = `${path}${paramString}`
+    .map(k => `${k}${params[k]}`)
+    .join('')
+
+  // Step 3: prepend path
+  let str = `${path}${sorted}`
+
+  // Step 4: append request body JSON (if not multipart)
   if (body && typeof body === 'object' && Object.keys(body).length > 0) {
-    signString += JSON.stringify(body)
+    str += JSON.stringify(body)
   }
-  const wrapped = `${appSecret}${signString}${appSecret}`
-  return crypto.createHmac('sha256', appSecret).update(wrapped).digest('hex')
+
+  // Step 5: wrap with app_secret
+  // Step 6: HMAC-SHA256
+  return crypto.createHmac('sha256', `${appSecret}${str}${appSecret}`)
+    .update(`${appSecret}${str}${appSecret}`)
+    .digest('hex')
 }
 
-// ── Generic API call ──
-async function signedRequest(
-  appKey: string, appSecret: string,
+// ── Generic signed API call (matches SDK's generateSign + fetch) ──
+async function call(
   path: string, accessToken: string,
   extraParams: Record<string, string> = {},
   opts?: { method?: string; body?: any }
 ) {
-  const timestamp = Math.floor(Date.now() / 1000).toString()
-  const params: Record<string, string> = {
-    app_key: appKey,
-    sign_method: 'HMAC-SHA256',
-    timestamp,
-    ...extraParams,
-  }
-  const sign = officialSign(appSecret, params, path, opts?.body)
-  params.sign = sign
+  const appKey = env('TIKTOK_APP_KEY')
+  const apiBase = env('TIKTOK_API_BASE', 'https://open-api.tiktokglobalshop.com')
 
-  const qs = new URLSearchParams(params).toString()
-  const url = `${getConfig().API_BASE}${path}?${qs}`
+  const timestamp = Math.floor(Date.now() / 1000).toString()
+  const params: Record<string, string> = { app_key: appKey, sign_method: 'HMAC-SHA256', timestamp, ...extraParams }
+  params.sign = sign(params, path, opts?.body)
+
+  const url = `${apiBase}${path}?${new URLSearchParams(params)}`
 
   const res = await fetch(url, {
     method: opts?.method || 'GET',
@@ -85,7 +63,7 @@ async function signedRequest(
 
   const text = await res.text()
   let json: any
-  try { json = JSON.parse(text) } catch { throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`) }
+  try { json = JSON.parse(text) } catch { throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`) }
   if (json.code !== undefined && json.code !== 0) {
     throw new Error(json.message || json.msg || JSON.stringify(json))
   }
@@ -98,128 +76,125 @@ export interface TokenResponse {
   shop_cipher: string; shop_name?: string; expires_in: number; scope: string
 }
 
-// ── Build authorization URL ──
-export function buildAuthUrl(): { authUrl: string; state: string } {
-  const { APP_KEY, APP_SECRET, SERVICE_ID, REDIRECT_URI, SCOPES } = getConfig()
+// ── State store (CSRF protection) ──
+const states = new Map<string, number>()
+setInterval(() => { const now = Date.now(); for (const [k, t] of states) if (now - t > 300_000) states.delete(k) }, 60000)
 
-  if (!APP_KEY || !APP_SECRET || !REDIRECT_URI) {
-    throw new Error(`TikTok OAuth not configured: APP_KEY=${APP_KEY ? 'set' : 'MISSING'}, SECRET=${APP_SECRET ? 'set' : 'MISSING'}, REDIRECT=${REDIRECT_URI || 'MISSING'}`)
-  }
-
-  const state = generateState()
-  const authUrl = `https://services.tiktokshop.com/open/authorize?service_id=${SERVICE_ID}&state=${state}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${SCOPES}`
-
-  console.log('[TikTok] Auth URL generated:', authUrl.slice(0, 120), '...')
-  return { authUrl, state }
+function makeState(): string {
+  const s = `${crypto.randomUUID()}.${crypto.randomBytes(8).toString('hex')}`
+  states.set(s, Date.now())
+  return s
+}
+export function verifyState(s: string): boolean {
+  if (!states.has(s)) return false
+  states.delete(s)
+  return true
 }
 
-// ── Exchange code ──
+// ── OAuth: Generate authorization URL ──
+export function buildAuthUrl(): { authUrl: string; state: string } {
+  const appKey = env('TIKTOK_APP_KEY')
+  const appSecret = env('TIKTOK_APP_SECRET')
+  const redirectUri = env('TIKTOK_REDIRECT_URI')
+
+  if (!appKey || !appSecret || !redirectUri) {
+    throw new Error(
+      `TikTok OAuth config missing: APP_KEY=${appKey ? 'OK' : '✗'}, ` +
+      `SECRET=${appSecret ? 'OK' : '✗'}, REDIRECT=${redirectUri || '✗'}`
+    )
+  }
+
+  const state = makeState()
+  const serviceId = appKey // SDK uses app_key as service_id
+  const scopes = ['seller.order', 'seller.product', 'seller.shop', 'seller.finance'].join(',')
+
+  const url = `https://services.tiktokshop.com/open/authorize?service_id=${serviceId}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}`
+
+  console.log(`[TikTok] Auth URL: service_id=${serviceId.slice(0, 8)}... redirect=${redirectUri.slice(0, 40)}...`)
+  return { authUrl: url, state }
+}
+
+// ── OAuth: Exchange auth code for token ──
+const AUTH_HOST = 'https://auth.tiktok-shops.com'
+
 export async function exchangeCode(code: string): Promise<TokenResponse> {
-  const { APP_KEY, APP_SECRET, AUTH_HOST, SCOPES } = getConfig()
-  const params = new URLSearchParams({
-    app_key: APP_KEY, app_secret: APP_SECRET,
-    auth_code: code, grant_type: 'authorized_code',
-  })
-  const url = `${AUTH_HOST}/api/v2/token/get?${params.toString()}`
+  const appKey = env('TIKTOK_APP_KEY')
+  const appSecret = env('TIKTOK_APP_SECRET')
 
+  const params = new URLSearchParams({ app_key: appKey, app_secret: appSecret, auth_code: code, grant_type: 'authorized_code' })
+  const url = `${AUTH_HOST}/api/v2/token/get?${params}`
+
+  console.log('[TikTok] Exchanging code for token...')
   const res = await fetch(url)
-  const text = await res.text()
-  if (!res.ok) throw new Error(`Token exchange failed HTTP ${res.status}: ${text}`)
+  const json: any = await res.json()
 
-  const json = JSON.parse(text)
-  if (json.code !== 0) throw new Error(json.message || JSON.stringify(json))
+  if (json.code !== 0) throw new Error(json.message || 'Token exchange failed')
 
   const d = json.data
-  const accessToken = d.access_token
-  const refreshTokenStr = d.refresh_token
+  const token = d.access_token
+  const expiresIn = d.access_token_expire_in ? Math.floor((d.access_token_expire_in - Date.now() / 1000)) : 86400
 
-  let shopId = ''
-  let shopCipher = ''
+  // Fetch shop info
+  let shopId = '', shopCipher = ''
   try {
-    const shopsResult = await signedRequest(APP_KEY, APP_SECRET, '/authorization/202309/shops', accessToken)
-    const shops = (shopsResult.data as any)?.shops || []
+    const shopsJson = await call('/authorization/202309/shops', token)
+    const shops = shopsJson?.data?.shops || []
     if (shops.length > 0) {
       shopId = shops[0].id || shops[0].shop_id || ''
       shopCipher = shops[0].cipher || shops[0].shop_cipher || ''
     }
-  } catch (e: any) {
-    console.warn('[TikTok] Could not fetch shop list:', e.message)
-  }
+  } catch { /* non-fatal */ }
 
   return {
-    access_token: accessToken,
-    refresh_token: refreshTokenStr,
-    shop_id: shopId || d.open_id?.split('_')?.[0] || d.shop_id || '',
+    access_token: token,
+    refresh_token: d.refresh_token || '',
+    shop_id: shopId || d.open_id?.split('_')?.[0] || '',
     shop_cipher: shopCipher,
     shop_name: d.seller_name || d.shop_name || '',
-    expires_in: d.access_token_expire_in
-      ? Math.floor((d.access_token_expire_in - Date.now() / 1000))
-      : 86400,
-    scope: SCOPES,
+    expires_in: expiresIn,
+    scope: '',
   }
 }
 
-// ── Refresh token ──
+// ── OAuth: Refresh token ──
 export async function refreshToken(refreshTokenStr: string) {
-  const { APP_KEY, APP_SECRET, AUTH_HOST } = getConfig()
-  const params = new URLSearchParams({
-    app_key: APP_KEY, app_secret: APP_SECRET,
-    refresh_token: refreshTokenStr, grant_type: 'refresh_token',
-  })
-  const url = `${AUTH_HOST}/api/v2/token/refresh?${params.toString()}`
+  const appKey = env('TIKTOK_APP_KEY')
+  const appSecret = env('TIKTOK_APP_SECRET')
+
+  const params = new URLSearchParams({ app_key: appKey, app_secret: appSecret, refresh_token: refreshTokenStr, grant_type: 'authorized_code' })
+  const url = `${AUTH_HOST}/api/v2/token/refresh?${params}`
 
   const res = await fetch(url)
-  const text = await res.text()
-  if (!res.ok) throw new Error(`Refresh failed HTTP ${res.status}: ${text}`)
-
-  const json = JSON.parse(text)
-  if (json.code !== 0) throw new Error(json.message || JSON.stringify(json))
+  const json: any = await res.json()
+  if (json.code !== 0) throw new Error(json.message || 'Refresh failed')
 
   const d = json.data
   return {
     access_token: d.access_token,
     refresh_token: d.refresh_token || refreshTokenStr,
-    expires_in: d.access_token_expire_in
-      ? Math.floor((d.access_token_expire_in - Date.now() / 1000))
-      : 86400,
+    expires_in: d.access_token_expire_in ? Math.floor((d.access_token_expire_in - Date.now() / 1000)) : 86400,
   }
 }
 
-// ── API call with shop_cipher ──
-export async function apiCall(
-  endpoint: string, accessToken: string, shopCipher: string,
-  opts?: { method?: string; body?: any; skipShopCipher?: boolean }
-) {
-  const { APP_KEY, APP_SECRET } = getConfig()
-  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
-  const extraParams: Record<string, string> = {}
-  if (!opts?.skipShopCipher && shopCipher) {
-    extraParams.shop_cipher = shopCipher
-  }
-  const result = await signedRequest(APP_KEY, APP_SECRET, path, accessToken, extraParams, opts)
-  if (result?.code !== undefined && result.code !== 0) {
-    throw new Error(result.message || JSON.stringify(result))
-  }
-  return result
+// ── Generic API call (with shop_cipher) ──
+export async function apiCall(endpoint: string, accessToken: string, shopCipher: string, opts?: { method?: string; body?: any }) {
+  const extra: Record<string, string> = {}
+  if (shopCipher) extra.shop_cipher = shopCipher
+  return call(endpoint, accessToken, extra, opts)
 }
 
 // ── Test connection ──
 export async function testConnection(accessToken: string, _shopCipher: string) {
-  const { APP_KEY, APP_SECRET } = getConfig()
-  return signedRequest(APP_KEY, APP_SECRET, '/authorization/202309/shops', accessToken)
+  return call('/authorization/202309/shops', accessToken)
 }
 
 // ── Get authorized shops ──
-async function getAuthorizedShops(accessToken: string): Promise<Array<{ id: string; name: string; cipher: string; region: string }>> {
-  const { APP_KEY, APP_SECRET } = getConfig()
-  const result = await signedRequest(APP_KEY, APP_SECRET, '/authorization/202309/shops', accessToken)
-  const shops = (result.data as any)?.shops || []
-  return shops.map((shop: any) => ({
+export async function getAuthorizedShops(accessToken: string) {
+  const result = await call('/authorization/202309/shops', accessToken)
+  return ((result?.data as any)?.shops || []).map((shop: any) => ({
     id: shop.id || shop.shop_id || '',
     name: shop.name || shop.shop_name || '',
     cipher: shop.cipher || shop.shop_cipher || '',
     region: shop.region || shop.shop_region || '',
   }))
 }
-
-export { verifyState, getAuthorizedShops }
