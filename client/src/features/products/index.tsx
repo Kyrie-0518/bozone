@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Search, Plus, LayoutGrid, List, TrendingUp, TrendingDown, Loader2,
+  Search, Plus, LayoutGrid, List, TrendingUp, TrendingDown, Loader2, RefreshCw, PackageSearch,
 } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
@@ -14,10 +14,12 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
 
 export function ProductsPage() {
   const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table')
   const qc = useQueryClient()
 
@@ -26,20 +28,40 @@ export function ProductsPage() {
     queryFn: () => api.products.list(search),
   })
 
+  const { data: shopsData } = useQuery({
+    queryKey: ['shops'],
+    queryFn: () => api.shops.list(),
+  })
+  const shops = shopsData?.shops || []
+
   const createMutation = useMutation({
     mutationFn: (body: any) => api.products.create(body),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['products'] }) },
   })
 
+  const syncMutation = useMutation({
+    mutationFn: () => api.sync.products(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] })
+    },
+  })
+
   const products = data?.data || []
+
+  // Extract unique categories for filter
+  const categories = [...new Set(products.map((p: any) => p.category).filter(Boolean))] as string[]
+  const filtered = categoryFilter === 'all'
+    ? products
+    : products.filter((p: any) => p.category === categoryFilter)
 
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     createMutation.mutate({
       name: fd.get('name'), sku: fd.get('sku'),
+      category: fd.get('category') || '',
       sellPrice: Number(fd.get('sellPrice')), costPrice: Number(fd.get('costPrice')),
-      weight: Number(fd.get('weight')),
+      weight: Number(fd.get('weight')), stock: Number(fd.get('stock') || 0),
     })
     e.currentTarget.reset()
     ;(document.querySelector('[data-dialog-close]') as HTMLElement)?.click()
@@ -81,6 +103,17 @@ export function ProductsPage() {
                 <List className='h-4 w-4' />
               </Button>
             </div>
+            <Button
+              variant='outline'
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+            >
+              {syncMutation.isPending
+                ? <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                : <RefreshCw className='mr-2 h-4 w-4' />
+              }
+              从TikTok同步
+            </Button>
             <Dialog>
               <DialogTrigger asChild>
                 <Button>
@@ -105,6 +138,10 @@ export function ProductsPage() {
                       <Input name='sku' placeholder='SKU编号' />
                     </div>
                   </div>
+                  <div className='grid gap-2'>
+                    <Label>分类</Label>
+                    <Input name='category' placeholder='如：厨房用品 > 保鲜袋' />
+                  </div>
                   <div className='grid grid-cols-3 gap-3'>
                     <div className='grid gap-2'>
                       <Label>售价 (MYR)</Label>
@@ -118,6 +155,10 @@ export function ProductsPage() {
                       <Label>重量 (kg)</Label>
                       <Input name='weight' type='number' placeholder='0.00' step='0.01' />
                     </div>
+                  </div>
+                  <div className='grid gap-2'>
+                    <Label>库存</Label>
+                    <Input name='stock' type='number' placeholder='0' />
                   </div>
                 </div>
                 <DialogFooter>
@@ -133,7 +174,7 @@ export function ProductsPage() {
           </div>
         </div>
 
-        <div className='mb-4'>
+        <div className='mb-4 flex flex-wrap items-center gap-3'>
           <div className='relative max-w-sm'>
             <Search className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
             <Input
@@ -143,16 +184,39 @@ export function ProductsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          {categories.length > 0 && (
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className='w-44'>
+                <SelectValue placeholder='分类' />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='all'>全部分类</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
-        {viewMode === 'table' ? (
+        {isLoading ? (
+          <div className='flex items-center justify-center py-16 text-muted-foreground'>
+            <Loader2 className='mr-2 h-5 w-5 animate-spin' /> 加载中...
+          </div>
+        ) : products.length === 0 ? (
+          <div className='flex flex-col items-center justify-center py-16 text-muted-foreground'>
+            <PackageSearch className='mb-2 h-10 w-10' />
+            <p className='text-sm'>暂无商品数据</p>
+            <p className='text-xs mt-1'>点击「从TikTok同步」拉取商品</p>
+          </div>
+        ) : viewMode === 'table' ? (
           <Card>
             <CardContent className='p-0'>
               <div className='overflow-x-auto'>
                 <table className='w-full'>
                   <thead>
                     <tr className='border-b bg-muted/50'>
-                      {['商品名称', 'SKU', '售价(MYR)', '成本(¥)', '重量(kg)', '库存', '总销量', '总利润(¥)', '利润率', '趋势'].map((h) => (
+                      {['商品名称', 'SKU', '分类', '售价(MYR)', '成本(¥)', '重量(kg)', '库存', '状态'].map((h) => (
                         <th key={h} className='px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
                           {h}
                         </th>
@@ -160,21 +224,28 @@ export function ProductsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {products.map((p: any) => (
+                    {filtered.map((p: any) => (
                       <tr key={p.id} className='border-b transition-colors hover:bg-muted/30'>
-                        <td className='px-3 py-3 text-sm font-medium'>{p.name}</td>
-                        <td className='px-3 py-3 text-sm font-mono text-xs text-muted-foreground'>{p.sku || '-'}</td>
+                        <td className='px-3 py-3 text-sm font-medium'>
+                          <div className='flex items-center gap-2'>
+                            {p.image && (
+                              <img src={p.image} alt='' className='h-8 w-8 rounded object-cover' />
+                            )}
+                            {p.name}
+                          </div>
+                        </td>
+                        <td className='px-3 py-3 text-sm font-mono text-xs text-muted-foreground'>{p.sku || '—'}</td>
+                        <td className='px-3 py-3 text-sm text-muted-foreground'>{p.category || '—'}</td>
                         <td className='px-3 py-3 text-sm tabular-nums'>MYR {p.sellPrice?.toFixed(2) ?? '0.00'}</td>
                         <td className='px-3 py-3 text-sm tabular-nums'>¥{p.costPrice?.toFixed(2) ?? '0.00'}</td>
                         <td className='px-3 py-3 text-sm tabular-nums'>{p.weight}kg</td>
                         <td className='px-3 py-3 text-sm tabular-nums'>
                           <span className={p.stock === 0 ? 'text-destructive font-semibold' : ''}>{p.stock}</span>
                         </td>
-                        <td className='px-3 py-3 text-sm tabular-nums'>—</td>
-                        <td className='px-3 py-3 text-sm font-semibold tabular-nums'>—</td>
-                        <td className='px-3 py-3 text-sm tabular-nums'>—</td>
                         <td className='px-3 py-3'>
-                          <span className='text-muted-foreground'>—</span>
+                          <Badge variant={p.status === '上架' ? 'default' : 'secondary'} className='text-xs'>
+                            {p.status || '上架'}
+                          </Badge>
                         </td>
                       </tr>
                     ))}
@@ -185,15 +256,24 @@ export function ProductsPage() {
           </Card>
         ) : (
           <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-            {products.map((p: any) => (
+            {filtered.map((p: any) => (
               <Card key={p.id} className='transition-shadow hover:shadow-md'>
                 <CardHeader className='pb-3'>
                   <div className='flex items-center justify-between'>
                     <Badge variant='outline' className='font-mono text-[10px]'>{p.sku || 'N/A'}</Badge>
-                    <TrendingUp className='h-4 w-4 text-emerald-500' />
+                    <Badge variant={p.status === '上架' ? 'default' : 'secondary'} className='text-[10px]'>
+                      {p.status || '上架'}
+                    </Badge>
                   </div>
-                  <CardTitle className='text-base mt-2'>{p.name}</CardTitle>
-                  <CardDescription>{p.shopId ? '已关联店铺' : '未关联'}</CardDescription>
+                  <div className='flex items-center gap-2 mt-2'>
+                    {p.image && (
+                      <img src={p.image} alt='' className='h-10 w-10 rounded object-cover' />
+                    )}
+                    <CardTitle className='text-base'>{p.name}</CardTitle>
+                  </div>
+                  {p.category && (
+                    <CardDescription className='text-xs'>{p.category}</CardDescription>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <div className='grid grid-cols-2 gap-y-2 text-sm'>

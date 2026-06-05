@@ -6,14 +6,15 @@ import { eq } from 'drizzle-orm'
 const app = new Hono()
 
 app.get('/:key', async (c) => {
-  const rows = await db.select().from(setting).where(eq(setting.key, c.req.param('key'))).limit(1)
+  const key = c.req.param('key')!
+  const rows = await db.select().from(setting).where(eq(setting.key, key)).limit(1)
   if (!rows.length) return c.json({ success: true, data: null })
-  return c.json({ success: true, data: safeParse(rows[0].value) })
+  return c.json({ success: true, data: safeParse(rows[0].value || '{}') })
 })
 
 app.put('/:key', async (c) => {
   const body = await c.req.json()
-  const key = c.req.param('key')
+  const key = c.req.param('key')!
   const v = typeof body === 'object' ? JSON.stringify(body) : String(body)
   const existing = await db.select().from(setting).where(eq(setting.key, key)).limit(1)
   if (existing.length) {

@@ -17,6 +17,7 @@ import { Route as AuthenticatedOrdersRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
 import { Route as AuthenticatedInfluencersRouteImport } from './routes/_authenticated/influencers'
 import { Route as AuthenticatedFinanceRouteImport } from './routes/_authenticated/finance'
+import { Route as AuthenticatedAuditLogsRouteImport } from './routes/_authenticated/audit-logs'
 import { Route as AuthenticatedAiStudioRouteImport } from './routes/_authenticated/ai-studio'
 import { Route as AuthenticatedAdsRouteImport } from './routes/_authenticated/ads'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
@@ -75,6 +76,11 @@ const AuthenticatedInfluencersRoute =
 const AuthenticatedFinanceRoute = AuthenticatedFinanceRouteImport.update({
   id: '/finance',
   path: '/finance',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAuditLogsRoute = AuthenticatedAuditLogsRouteImport.update({
+  id: '/audit-logs',
+  path: '/audit-logs',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAiStudioRoute = AuthenticatedAiStudioRouteImport.update({
@@ -195,6 +201,7 @@ export interface FileRoutesByFullPath {
   '/503': typeof errors503Route
   '/ads': typeof AuthenticatedAdsRoute
   '/ai-studio': typeof AuthenticatedAiStudioRoute
+  '/audit-logs': typeof AuthenticatedAuditLogsRoute
   '/finance': typeof AuthenticatedFinanceRoute
   '/influencers': typeof AuthenticatedInfluencersRoute
   '/inventory': typeof AuthenticatedInventoryRoute
@@ -221,6 +228,7 @@ export interface FileRoutesByTo {
   '/503': typeof errors503Route
   '/ads': typeof AuthenticatedAdsRoute
   '/ai-studio': typeof AuthenticatedAiStudioRoute
+  '/audit-logs': typeof AuthenticatedAuditLogsRoute
   '/finance': typeof AuthenticatedFinanceRoute
   '/influencers': typeof AuthenticatedInfluencersRoute
   '/inventory': typeof AuthenticatedInventoryRoute
@@ -251,6 +259,7 @@ export interface FileRoutesById {
   '/(errors)/503': typeof errors503Route
   '/_authenticated/ads': typeof AuthenticatedAdsRoute
   '/_authenticated/ai-studio': typeof AuthenticatedAiStudioRoute
+  '/_authenticated/audit-logs': typeof AuthenticatedAuditLogsRoute
   '/_authenticated/finance': typeof AuthenticatedFinanceRoute
   '/_authenticated/influencers': typeof AuthenticatedInfluencersRoute
   '/_authenticated/inventory': typeof AuthenticatedInventoryRoute
@@ -282,6 +291,7 @@ export interface FileRouteTypes {
     | '/503'
     | '/ads'
     | '/ai-studio'
+    | '/audit-logs'
     | '/finance'
     | '/influencers'
     | '/inventory'
@@ -308,6 +318,7 @@ export interface FileRouteTypes {
     | '/503'
     | '/ads'
     | '/ai-studio'
+    | '/audit-logs'
     | '/finance'
     | '/influencers'
     | '/inventory'
@@ -337,6 +348,7 @@ export interface FileRouteTypes {
     | '/(errors)/503'
     | '/_authenticated/ads'
     | '/_authenticated/ai-studio'
+    | '/_authenticated/audit-logs'
     | '/_authenticated/finance'
     | '/_authenticated/influencers'
     | '/_authenticated/inventory'
@@ -422,6 +434,13 @@ declare module '@tanstack/react-router' {
       path: '/finance'
       fullPath: '/finance'
       preLoaderRoute: typeof AuthenticatedFinanceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/audit-logs': {
+      id: '/_authenticated/audit-logs'
+      path: '/audit-logs'
+      fullPath: '/audit-logs'
+      preLoaderRoute: typeof AuthenticatedAuditLogsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/ai-studio': {
@@ -587,6 +606,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedAdsRoute: typeof AuthenticatedAdsRoute
   AuthenticatedAiStudioRoute: typeof AuthenticatedAiStudioRoute
+  AuthenticatedAuditLogsRoute: typeof AuthenticatedAuditLogsRoute
   AuthenticatedFinanceRoute: typeof AuthenticatedFinanceRoute
   AuthenticatedInfluencersRoute: typeof AuthenticatedInfluencersRoute
   AuthenticatedInventoryRoute: typeof AuthenticatedInventoryRoute
@@ -601,6 +621,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedAdsRoute: AuthenticatedAdsRoute,
   AuthenticatedAiStudioRoute: AuthenticatedAiStudioRoute,
+  AuthenticatedAuditLogsRoute: AuthenticatedAuditLogsRoute,
   AuthenticatedFinanceRoute: AuthenticatedFinanceRoute,
   AuthenticatedInfluencersRoute: AuthenticatedInfluencersRoute,
   AuthenticatedInventoryRoute: AuthenticatedInventoryRoute,

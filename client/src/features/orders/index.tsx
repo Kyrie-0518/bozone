@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Search, ShoppingCart, Download, Filter } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Search, Download, Filter, RefreshCw, Loader2, PackageOpen } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
@@ -8,85 +9,63 @@ import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { api } from '@/lib/api'
 
-type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refund'
-type ShopFilter = 'all' | 'TikTok MY' | 'Shopee MY' | 'Lazada MY'
-
-interface Order {
-  id: string
-  orderNo: string
-  shop: string
-  product: string
-  sku: string
-  quantity: number
-  amount: number
-  currency: string
-  shippingCost: number
-  profit: number
-  profitMargin: number
-  status: OrderStatus
-  time: string
-  buyerNote?: string
-}
-
-const mockOrders: Order[] = [
-  { id: '1', orderNo: '5833133557869629', shop: 'TikTok MY', product: '冰箱除味剂', sku: 'FRESH-001', quantity: 1, amount: 21.49, currency: 'MYR', shippingCost: 3.35, profit: 22.12, profitMargin: 34.5, status: 'shipped', time: '2026-05-28 14:22', buyerNote: '请发顺丰' },
-  { id: '2', orderNo: '5837850537980657', shop: 'TikTok MY', product: '多功能清洁膏', sku: 'CLEAN-003', quantity: 2, amount: 43.60, currency: 'MYR', shippingCost: 11.35, profit: 29.38, profitMargin: 28.1, status: 'shipped', time: '2026-05-28 12:15' },
-  { id: '3', orderNo: '5837787679949996', shop: 'Shopee MY', product: '冰箱除味剂', sku: 'FRESH-001', quantity: 1, amount: 21.80, currency: 'MYR', shippingCost: 3.35, profit: 22.55, profitMargin: 35.8, status: 'processing', time: '2026-05-28 09:48' },
-  { id: '4', orderNo: '5837778806180111', shop: 'TikTok MY', product: '洗衣机清洁片', sku: 'WASH-007', quantity: 3, amount: 55.50, currency: 'MYR', shippingCost: 5.16, profit: -4.31, profitMargin: -2.6, status: 'pending', time: '2026-05-27 22:30' },
-  { id: '5', orderNo: '5837690012456702', shop: 'TikTok MY', product: '冰箱除味盒', sku: 'FRESH-002', quantity: 1, amount: 15.90, currency: 'MYR', shippingCost: 3.87, profit: 8.92, profitMargin: 21.3, status: 'delivered', time: '2026-05-27 18:05' },
-  { id: '6', orderNo: '5837543289012345', shop: 'Lazada MY', product: '厨房清洁剂', sku: 'KIT-009', quantity: 1, amount: 25.00, currency: 'MYR', shippingCost: 4.50, profit: 18.20, profitMargin: 30.5, status: 'delivered', time: '2026-05-27 15:40' },
-  { id: '7', orderNo: '5837489012345678', shop: 'Shopee MY', product: '除味棒', sku: 'FRESH-005', quantity: 2, amount: 25.00, currency: 'MYR', shippingCost: 2.80, profit: 12.30, profitMargin: 22.8, status: 'shipped', time: '2026-05-27 11:22' },
-  { id: '8', orderNo: '5837234567890123', shop: 'TikTok MY', product: '多功能清洁膏', sku: 'CLEAN-003', quantity: 1, amount: 21.80, currency: 'MYR', shippingCost: 11.35, profit: 14.69, profitMargin: 25.6, status: 'cancelled', time: '2026-05-27 08:15', buyerNote: '买家取消' },
-  { id: '9', orderNo: '5837102345678901', shop: 'TikTok MY', product: '管道疏通剂', sku: 'PIPE-012', quantity: 1, amount: 12.50, currency: 'MYR', shippingCost: 2.50, profit: 5.80, profitMargin: 18.2, status: 'pending', time: '2026-05-27 06:30' },
-  { id: '10', orderNo: '5836987654321098', shop: 'Shopee MY', product: '玻璃清洁液', sku: 'GLASS-015', quantity: 1, amount: 18.00, currency: 'MYR', shippingCost: 3.00, profit: 11.50, profitMargin: 28.0, status: 'refund', time: '2026-05-26 20:45', buyerNote: '商品破损' },
-]
-
-const statusConfig: Record<OrderStatus, { label: string; variant: 'secondary' | 'default' | 'outline' | 'destructive' }> = {
+const statusConfig: Record<string, { label: string; variant: 'secondary' | 'default' | 'outline' | 'destructive' }> = {
+  '待付款': { label: '待付款', variant: 'secondary' },
+  '审核中': { label: '审核中', variant: 'outline' },
+  '待发货': { label: '待发货', variant: 'default' },
+  '部分发货': { label: '部分发货', variant: 'default' },
+  '待取件': { label: '待取件', variant: 'default' },
+  '运输中': { label: '运输中', variant: 'outline' },
+  '已签收': { label: '已签收', variant: 'default' },
+  '已完成': { label: '已完成', variant: 'default' },
+  '已取消': { label: '已取消', variant: 'destructive' },
+  '退货申请': { label: '退货申请', variant: 'destructive' },
+  '退货中': { label: '退货中', variant: 'destructive' },
   pending: { label: '待处理', variant: 'secondary' },
-  processing: { label: '处理中', variant: 'outline' },
   shipped: { label: '已发货', variant: 'default' },
   delivered: { label: '已签收', variant: 'default' },
   cancelled: { label: '已取消', variant: 'destructive' },
   refund: { label: '退款中', variant: 'destructive' },
 }
 
-const shops: ShopFilter[] = ['all', 'TikTok MY', 'Shopee MY', 'Lazada MY']
-const statuses: OrderStatus[] = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refund']
+const allStatuses = ['待付款', '审核中', '待发货', '部分发货', '运输中', '已签收', '已完成', '已取消', '退货申请', '退货中']
 
 export function OrdersPage() {
   const [search, setSearch] = useState('')
-  const [shopFilter, setShopFilter] = useState<ShopFilter>('all')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [shopFilter, setShopFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [selectedOrder, setSelectedOrder] = useState<any>(null)
+  const qc = useQueryClient()
 
-  const filtered = mockOrders.filter((o) => {
-    if (search && !o.orderNo.includes(search) && !o.product.includes(search)) return false
-    if (shopFilter !== 'all' && o.shop !== shopFilter) return false
-    if (statusFilter !== 'all' && o.status !== statusFilter) return false
-    return true
+  // Load shops for filter
+  const { data: shopsData } = useQuery({
+    queryKey: ['shops'],
+    queryFn: () => api.shops.list(),
+  })
+  const shops = shopsData?.shops || []
+
+  // Load orders from API
+  const { data: ordersData, isLoading } = useQuery({
+    queryKey: ['orders', search, statusFilter, shopFilter],
+    queryFn: () => api.orders.list(
+      search,
+      statusFilter !== 'all' ? statusFilter : '',
+      shopFilter !== 'all' ? shopFilter : '',
+    ),
+  })
+  const orders = ordersData?.data || []
+
+  // Sync mutation
+  const syncMutation = useMutation({
+    mutationFn: () => api.sync.orders(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] })
+    },
   })
 
   return (
@@ -103,13 +82,26 @@ export function OrdersPage() {
           <div>
             <h1 className='text-2xl font-bold tracking-tight'>订单管理</h1>
             <p className='text-sm text-muted-foreground mt-1'>
-              查看和管理所有跨境订单，共 {filtered.length} 条
+              查看和管理所有跨境订单，共 {isLoading ? '...' : orders.length} 条
             </p>
           </div>
-          <Button variant='outline'>
-            <Download className='mr-2 h-4 w-4' />
-            导出 Excel
-          </Button>
+          <div className='flex items-center gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+            >
+              {syncMutation.isPending
+                ? <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                : <RefreshCw className='mr-2 h-4 w-4' />
+              }
+              同步订单
+            </Button>
+            <Button variant='outline'>
+              <Download className='mr-2 h-4 w-4' />
+              导出 Excel
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -117,32 +109,32 @@ export function OrdersPage() {
           <div className='relative w-64'>
             <Search className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
             <Input
-              placeholder='搜索订单号或产品...'
+              placeholder='搜索订单号...'
               className='pl-9'
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={shopFilter} onValueChange={(v) => setShopFilter(v as ShopFilter)}>
-            <SelectTrigger className='w-36'>
+          <Select value={shopFilter} onValueChange={setShopFilter}>
+            <SelectTrigger className='w-40'>
               <Filter className='mr-1 h-3.5 w-3.5' />
               <SelectValue placeholder='店铺' />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value='all'>全部店铺</SelectItem>
-              {shops.filter(s => s !== 'all').map((s) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
+              {shops.map((s: any) => (
+                <SelectItem key={s.id} value={String(s.id)}>{s.name || s.shopId}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className='w-28'>
+            <SelectTrigger className='w-32'>
               <SelectValue placeholder='状态' />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value='all'>全部状态</SelectItem>
-              {statuses.map((s) => (
-                <SelectItem key={s} value={s}>{statusConfig[s].label}</SelectItem>
+              {allStatuses.map((s) => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -154,55 +146,67 @@ export function OrdersPage() {
             <CardTitle className='text-base'>订单列表</CardTitle>
           </CardHeader>
           <CardContent className='p-0'>
-            <div className='overflow-x-auto'>
-              <table className='w-full'>
-                <thead>
-                  <tr className='border-b bg-muted/50'>
-                    {['订单号', '店铺', '产品', '数量', '金额', '运费', '净利润', '利润率', '状态', '时间'].map((h) => (
-                      <th key={h} className='px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((order) => (
-                    <tr
-                      key={order.id}
-                      className='border-b transition-colors hover:bg-muted/30 cursor-pointer'
-                      onClick={() => setSelectedOrder(order)}
-                    >
-                      <td className='px-3 py-3 text-sm font-medium text-primary tabular-nums'>
-                        {order.orderNo.slice(0, 12)}...
-                      </td>
-                      <td className='px-3 py-3 text-sm'>{order.shop}</td>
-                      <td className='px-3 py-3 text-sm'>{order.product}</td>
-                      <td className='px-3 py-3 text-sm tabular-nums'>{order.quantity}</td>
-                      <td className='px-3 py-3 text-sm tabular-nums font-medium'>
-                        {order.currency} {order.amount.toFixed(2)}
-                      </td>
-                      <td className='px-3 py-3 text-sm tabular-nums'>
-                        ¥{order.shippingCost.toFixed(2)}
-                      </td>
-                      <td className={`px-3 py-3 text-sm font-semibold tabular-nums ${order.profit >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>
-                        ¥{order.profit.toFixed(2)}
-                      </td>
-                      <td className={`px-3 py-3 text-sm tabular-nums ${order.profitMargin >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>
-                        {order.profitMargin >= 0 ? '+' : ''}{order.profitMargin}%
-                      </td>
-                      <td className='px-3 py-3'>
-                        <Badge variant={statusConfig[order.status].variant}>
-                          {statusConfig[order.status].label}
-                        </Badge>
-                      </td>
-                      <td className='px-3 py-3 text-sm text-muted-foreground whitespace-nowrap'>
-                        {order.time}
-                      </td>
+            {isLoading ? (
+              <div className='flex items-center justify-center py-16 text-muted-foreground'>
+                <Loader2 className='mr-2 h-5 w-5 animate-spin' /> 加载中...
+              </div>
+            ) : orders.length === 0 ? (
+              <div className='flex flex-col items-center justify-center py-16 text-muted-foreground'>
+                <PackageOpen className='mb-2 h-10 w-10' />
+                <p className='text-sm'>暂无订单数据</p>
+                <p className='text-xs mt-1'>点击「同步订单」从 TikTok 拉取</p>
+              </div>
+            ) : (
+              <div className='overflow-x-auto'>
+                <table className='w-full'>
+                  <thead>
+                    <tr className='border-b bg-muted/50'>
+                      {['订单号', '店铺', '状态', '物流', '金额', '运费', '币种', '时间'].map((h) => (
+                        <th key={h} className='px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {orders.map((o: any) => (
+                      <tr
+                        key={o.id}
+                        className='border-b transition-colors hover:bg-muted/30 cursor-pointer'
+                        onClick={() => setSelectedOrder(o)}
+                      >
+                        <td className='px-3 py-3 text-sm font-medium text-primary tabular-nums'>
+                          {(o.orderNo || '').slice(0, 16)}...
+                        </td>
+                        <td className='px-3 py-3 text-sm text-muted-foreground'>
+                          {shops.find((s: any) => s.id === o.shopId)?.name || `#${o.shopId || ''}`}
+                        </td>
+                        <td className='px-3 py-3'>
+                          <Badge variant={statusConfig[o.status]?.variant || 'secondary'}>
+                            {statusConfig[o.status]?.label || o.status}
+                          </Badge>
+                        </td>
+                        <td className='px-3 py-3'>
+                          <Badge variant='outline' className='text-xs'>
+                            {o.logisticsStatus || '—'}
+                          </Badge>
+                        </td>
+                        <td className='px-3 py-3 text-sm tabular-nums font-medium'>
+                          {o.actualAmount?.toFixed(2) ?? '—'}
+                        </td>
+                        <td className='px-3 py-3 text-sm tabular-nums text-muted-foreground'>
+                          {o.shippingFee?.toFixed(2) ?? '—'}
+                        </td>
+                        <td className='px-3 py-3 text-sm text-muted-foreground'>{o.currency || 'MYR'}</td>
+                        <td className='px-3 py-3 text-sm text-muted-foreground whitespace-nowrap'>
+                          {o.orderTime ? new Date(o.orderTime).toLocaleDateString('zh-CN') : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -217,26 +221,63 @@ export function OrdersPage() {
                 </SheetHeader>
                 <div className='mt-6 space-y-4'>
                   <div className='grid grid-cols-2 gap-3 text-sm'>
-                    <div><span className='text-muted-foreground'>店铺：</span>{selectedOrder.shop}</div>
-                    <div><span className='text-muted-foreground'>状态：</span>
-                      <Badge variant={statusConfig[selectedOrder.status].variant} className='ml-1'>
-                        {statusConfig[selectedOrder.status].label}
+                    <div>
+                      <span className='text-muted-foreground'>店铺：</span>
+                      {shops.find((s: any) => s.id === selectedOrder.shopId)?.name || '—'}
+                    </div>
+                    <div>
+                      <span className='text-muted-foreground'>状态：</span>
+                      <Badge variant={statusConfig[selectedOrder.status]?.variant || 'secondary'} className='ml-1'>
+                        {statusConfig[selectedOrder.status]?.label || selectedOrder.status}
                       </Badge>
                     </div>
-                    <div><span className='text-muted-foreground'>产品：</span>{selectedOrder.product}</div>
-                    <div><span className='text-muted-foreground'>SKU：</span>{selectedOrder.sku}</div>
-                    <div><span className='text-muted-foreground'>数量：</span>{selectedOrder.quantity}</div>
-                    <div><span className='text-muted-foreground'>金额：</span>{selectedOrder.currency} {selectedOrder.amount.toFixed(2)}</div>
-                    <div><span className='text-muted-foreground'>运费：</span>¥{selectedOrder.shippingCost.toFixed(2)}</div>
-                    <div><span className='text-muted-foreground'>利润：</span>
-                      <span className={selectedOrder.profit >= 0 ? 'text-emerald-500 font-semibold' : 'text-destructive font-semibold'}>
-                        ¥{selectedOrder.profit.toFixed(2)}
-                      </span>
+                    <div>
+                      <span className='text-muted-foreground'>买家：</span>
+                      {selectedOrder.buyerName || '—'}
+                    </div>
+                    <div>
+                      <span className='text-muted-foreground'>物流：</span>
+                      {selectedOrder.logisticsStatus || '—'}
+                    </div>
+                    <div>
+                      <span className='text-muted-foreground'>运单号：</span>
+                      {selectedOrder.trackingNo || '—'}
+                    </div>
+                    <div>
+                      <span className='text-muted-foreground'>承运商：</span>
+                      {selectedOrder.carrier || '—'}
+                    </div>
+                    <div>
+                      <span className='text-muted-foreground'>下单时间：</span>
+                      {selectedOrder.orderTime ? new Date(selectedOrder.orderTime).toLocaleString('zh-CN') : '—'}
+                    </div>
+                    <div>
+                      <span className='text-muted-foreground'>发货截止：</span>
+                      {selectedOrder.shipDeadline ? new Date(selectedOrder.shipDeadline).toLocaleDateString('zh-CN') : '—'}
                     </div>
                   </div>
-                  {selectedOrder.buyerNote && (
+
+                  <div className='rounded-lg border p-4'>
+                    <h4 className='text-sm font-semibold mb-2'>支付信息</h4>
+                    <div className='grid grid-cols-2 gap-y-1 text-sm'>
+                      <div className='text-muted-foreground'>商品总额</div>
+                      <div className='text-right tabular-nums'>{selectedOrder.itemTotal?.toFixed(2) ?? '—'}</div>
+                      <div className='text-muted-foreground'>运费</div>
+                      <div className='text-right tabular-nums'>{selectedOrder.shippingFee?.toFixed(2) ?? '—'}</div>
+                      <div className='text-muted-foreground'>平台优惠</div>
+                      <div className='text-right tabular-nums text-destructive'>-{selectedOrder.discount?.toFixed(2) ?? '0.00'}</div>
+                      <div className='text-muted-foreground'>税费</div>
+                      <div className='text-right tabular-nums'>{selectedOrder.taxes?.toFixed(2) ?? '—'}</div>
+                      <div className='border-t pt-1 mt-1 font-semibold'>实付金额</div>
+                      <div className='border-t pt-1 mt-1 text-right font-semibold tabular-nums'>
+                        {selectedOrder.actualAmount?.toFixed(2) ?? '—'} {selectedOrder.currency || 'MYR'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {selectedOrder.remark && (
                     <div className='rounded-lg border p-3 text-sm'>
-                      <span className='text-muted-foreground'>买家备注：</span>{selectedOrder.buyerNote}
+                      <span className='text-muted-foreground'>备注：</span>{selectedOrder.remark}
                     </div>
                   )}
                 </div>

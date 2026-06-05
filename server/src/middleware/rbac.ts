@@ -1,12 +1,9 @@
 // ── Role-Based Access Control Middleware ──
 import type { Context, Next } from 'hono'
 import { auth } from '../auth.js'
-import { createClient } from '@libsql/client'
-import path from 'path'
-import { fileURLToPath } from 'url'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const dbPath = `file:${path.join(__dirname, '..', '..', 'data', 'bozone.db')}`
+import { db } from '../db.js'
+import { user } from '../db-schema.js'
+import { eq } from 'drizzle-orm'
 
 // Role hierarchy: higher index = more permissions
 const ROLE_HIERARCHY: Record<string, number> = {
@@ -25,21 +22,18 @@ async function getCurrentUser(c: Context) {
     if (!session?.user) return null
 
     // Read role from DB (Better-Auth session may not include custom fields)
-    const client = createClient({ url: dbPath })
-    try {
-      const rows = await client.execute({
-        sql: 'SELECT role, name, email FROM "user" WHERE id = ?',
-        args: [session.user.id],
-      })
-      const user = rows.rows[0] as any
-      return {
-        id: session.user.id,
-        email: user?.email || session.user.email || '',
-        name: user?.name || session.user.name || '',
-        role: (user?.role as string) || 'operator',
-      }
-    } finally {
-      client.close()
+    const rows = await db
+      .select({ role: user.role, name: user.name, email: user.email })
+      .from(user)
+      .where(eq(user.id, session.user.id))
+      .limit(1)
+
+    const u = rows[0]
+    return {
+      id: session.user.id,
+      email: u?.email || session.user.email || '',
+      name: u?.name || session.user.name || '',
+      role: (u?.role as string) || 'operator',
     }
   } catch {
     return null
@@ -47,8 +41,9 @@ async function getCurrentUser(c: Context) {
 }
 
 // Middleware: require authentication
-export function requireAuth(c: Context, next: Next): Promise<Response | void> {
-  return withAuth()(c, next)
+export async function requireAuth(c: Context, next: Next) {
+  const mw = await withAuth()
+  return mw(c, next)
 }
 
 // Middleware factory: require minimum role
@@ -56,18 +51,18 @@ export function requireRole(minRole: Role) {
   const minLevel = ROLE_HIERARCHY[minRole] ?? 0
 
   return async (c: Context, next: Next) => {
-    const user = await getCurrentUser(c)
-    if (!user) {
+    const currentUser = await getCurrentUser(c)
+    if (!currentUser) {
       return c.json({ error: '未登录或登录已过期' }, 401)
     }
 
-    const userLevel = ROLE_HIERARCHY[user.role] ?? 0
+    const userLevel = ROLE_HIERARCHY[currentUser.role] ?? 0
     if (userLevel < minLevel) {
       return c.json({ error: '权限不足' }, 403)
     }
 
     // Attach user to context for downstream use
-    c.set('currentUser', user)
+    c.set('currentUser', currentUser)
     await next()
   }
 }
@@ -75,11 +70,11 @@ export function requireRole(minRole: Role) {
 // Middleware: authenticated only (any role)
 export async function withAuth() {
   return async (c: Context, next: Next) => {
-    const user = await getCurrentUser(c)
-    if (!user) {
+    const currentUser = await getCurrentUser(c)
+    if (!currentUser) {
       return c.json({ error: '未登录或登录已过期' }, 401)
     }
-    c.set('currentUser', user)
+    c.set('currentUser', currentUser)
     await next()
   }
 }

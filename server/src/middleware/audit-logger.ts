@@ -1,13 +1,9 @@
 // ── Audit Log Auto-Recording Middleware ──
 // Automatically logs all /api/* requests (except /api/auth) with user info
 import type { Context, Next } from 'hono'
-import { createClient } from '@libsql/client'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { db } from '../db.js'
+import { auditLog } from '../db-schema.js'
 import { auth } from '../auth.js'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const dbPath = `file:${path.join(__dirname, '..', '..', 'data', 'bozone.db')}`
 
 // Skip logging for these paths
 const SKIP_PATHS = [
@@ -17,37 +13,6 @@ const SKIP_PATHS = [
 
 function shouldSkip(path: string): boolean {
   return SKIP_PATHS.some(p => path.startsWith(p))
-}
-
-async function insertLog(entry: {
-  userId: string | null
-  username: string
-  action: string
-  method: string
-  path: string
-  detail: string
-  ip: string
-}) {
-  try {
-    const client = createClient({ url: dbPath })
-    await client.execute({
-      sql: `INSERT INTO "audit_log" ("user_id", "username", "action", "method", "path", "detail", "ip", "created_at")
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        entry.userId,
-        entry.username,
-        entry.action,
-        entry.method,
-        entry.path,
-        entry.detail,
-        entry.ip,
-        new Date().toISOString(),
-      ],
-    })
-    client.close()
-  } catch {
-    // Silently fail — audit log should never break the request
-  }
 }
 
 export function auditLogger() {
@@ -84,7 +49,6 @@ export function auditLogger() {
     // Log after response
     const duration = Date.now() - startTime
     const statusCode = c.res.status
-    const action = `${method} ${pathname}`
 
     // Generate readable action name from path
     const parts = pathname.split('/').filter(Boolean)
@@ -99,15 +63,21 @@ export function auditLogger() {
       else if (method === 'DELETE') actionName = `删除${resource}`
     }
 
-    // Don't await — fire and forget to avoid slowing response
-    insertLog({
-      userId,
-      username,
-      action: actionName,
-      method,
-      path: pathname,
-      detail: `${statusCode} ${duration}ms`,
-      ip,
-    }).catch(() => {})
+    // Use shared db connection (not fire-and-forget new connection)
+    try {
+      await db.insert(auditLog).values({
+        userId,
+        username,
+        action: actionName,
+        method,
+        path: pathname,
+        detail: `${statusCode} ${duration}ms`,
+        ip,
+        createdAt: new Date().toISOString(),
+      })
+    } catch (e) {
+      // Log to console for debugging but never break the request
+      console.error('[Audit] Failed to log:', pathname, (e as Error).message)
+    }
   }
 }

@@ -10,6 +10,7 @@ import {
   BarChart3,
   Warehouse,
   TrendingUp,
+  ScrollText,
 } from 'lucide-react'
 import { type SidebarData } from '../types'
 
@@ -90,10 +91,20 @@ export const sidebarData: SidebarData = {
           url: '/finance',
           icon: Banknote,
         },
+      ],
+    },
+    {
+      title: '系统',
+      items: [
         {
           title: '系统设置',
           url: '/settings',
           icon: Settings,
+        },
+        {
+          title: '操作日志',
+          url: '/audit-logs',
+          icon: ScrollText,
         },
       ],
     },

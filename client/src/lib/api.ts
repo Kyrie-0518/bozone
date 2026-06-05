@@ -123,6 +123,19 @@ export const api = {
     list: (limit = 100) => request<{ success: boolean; data: any[] }>(`/api/audit-logs?limit=${limit}`),
   },
 
+  // Sync
+  sync: {
+    orders: (shopId?: number) => {
+      const path = shopId ? `/api/sync/orders/${shopId}` : '/api/sync/orders'
+      return request<{ success: boolean; result?: any; results?: any }>(path, { method: 'POST' })
+    },
+    products: (shopId?: number) => {
+      const path = shopId ? `/api/sync/products/${shopId}` : '/api/sync/products'
+      return request<{ success: boolean; result?: any; results?: any }>(path, { method: 'POST' })
+    },
+    logs: (limit = 50) => request<{ success: boolean; data: any[] }>(`/api/sync/logs?limit=${limit}`),
+  },
+
   // Settings
   setting: {
     get: (key: string) => request<{ success: boolean; data: any }>(`/api/settings/${key}`),

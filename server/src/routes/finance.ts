@@ -1,33 +1,36 @@
 import { Hono } from 'hono'
 import { db } from '../db.js'
 import { costItem, exchangeRate } from '../db-schema.js'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 
 const app = new Hono()
 
 // ── Cost Items ──
 app.get('/cost-items', async (c) => {
-  const rows = await db.select().from(costItem).all()
+  const rows = await db.select().from(costItem)
   return c.json({ success: true, data: rows })
 })
 
 app.post('/cost-items', async (c) => {
   const body = await c.req.json()
   const now = new Date().toISOString()
-  const result = await db.insert(costItem).values({
+  const [inserted] = await db.insert(costItem).values({
     name: body.name, chargeType: body.chargeType || 'fixed',
     value: body.value || 0, currency: body.currency || 'RMB',
     formula: body.formula || '', scope: body.scope || 'all',
     createdAt: now, updatedAt: now,
-  }).returning()
-  return c.json({ success: true, data: result[0] })
+  }).$returningId()
+  const [row] = await db.select().from(costItem).where(eq(costItem.id, inserted.id)).limit(1)
+  return c.json({ success: true, data: row })
 })
 
 app.put('/cost-items/:id', async (c) => {
   const body = await c.req.json()
+  const id = Number(c.req.param('id'))
   const now = new Date().toISOString()
-  const result = await db.update(costItem).set({ ...body, updatedAt: now }).where(eq(costItem.id, Number(c.req.param('id')))).returning()
-  return c.json({ success: true, data: result[0] })
+  await db.update(costItem).set({ ...body, updatedAt: now }).where(eq(costItem.id, id))
+  const [row] = await db.select().from(costItem).where(eq(costItem.id, id)).limit(1)
+  return c.json({ success: true, data: row })
 })
 
 app.delete('/cost-items/:id', async (c) => {
@@ -37,14 +40,19 @@ app.delete('/cost-items/:id', async (c) => {
 
 // ── Exchange Rates ──
 app.get('/exchange-rate', async (c) => {
-  const rows = await db.select().from(exchangeRate).all()
+  const rows = await db.select().from(exchangeRate)
   return c.json({ success: true, data: rows })
 })
 
 app.put('/exchange-rate', async (c) => {
   const body = await c.req.json()
   const now = new Date().toISOString()
-  const existing = await db.select().from(exchangeRate).where(eq(exchangeRate.fromCurrency, body.fromCurrency)).where(eq(exchangeRate.toCurrency, body.toCurrency)).limit(1)
+  const existing = await db.select().from(exchangeRate)
+    .where(and(
+      eq(exchangeRate.fromCurrency, body.fromCurrency),
+      eq(exchangeRate.toCurrency, body.toCurrency),
+    ))
+    .limit(1)
   if (existing.length) {
     await db.update(exchangeRate).set({ rate: body.rate, updatedAt: now }).where(eq(exchangeRate.id, existing[0].id))
   } else {

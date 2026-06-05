@@ -166,7 +166,7 @@ app.post('/test', async (c) => {
 
 // ── 6. List all shops ──
 app.get('/', async (c) => {
-  const rows = await db.select().from(tiktokShop).all()
+  const rows = await db.select().from(tiktokShop)
   const safe = rows.map((r) => ({
     ...r,
     appSecret: '***',

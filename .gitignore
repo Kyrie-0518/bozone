@@ -3,8 +3,17 @@ dist/
 *.log
 logs/
 .env
-data/*.db
+data/
 *.tar.gz
 *.zip
 .DS_Store
 Thumbs.db
+# Local MySQL data
+mysql-data/
+# IDE
+.codebuddy/
+# PM2 logs
+.pm2/
+# TanStack temp
+.tanstack/tmp/
+

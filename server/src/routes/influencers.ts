@@ -8,8 +8,8 @@ const app = new Hono()
 app.get('/', async (c) => {
   const q = c.req.query('q') || ''
   const rows = q
-    ? await db.select().from(influencer).where(like(influencer.name, `%${q}%`)).all()
-    : await db.select().from(influencer).all()
+    ? await db.select().from(influencer).where(like(influencer.name, `%${q}%`))
+    : await db.select().from(influencer)
   return c.json({ success: true, data: rows })
 })
 
@@ -22,21 +22,24 @@ app.get('/:id', async (c) => {
 app.post('/', async (c) => {
   const body = await c.req.json()
   const now = new Date().toISOString()
-  const result = await db.insert(influencer).values({
+  const [inserted] = await db.insert(influencer).values({
     name: body.name, tiktokId: body.tiktokId || '',
     followers: body.followers || 0, country: body.country || 'MY',
     contactInfo: body.contactInfo || '', contactChannel: body.contactChannel || '',
     productId: body.productId || null, commissionRate: body.commissionRate || 0,
     cooperationStatus: body.cooperationStatus || '未联系',
     remark: body.remark || '', createdAt: now, updatedAt: now,
-  }).returning()
-  return c.json({ success: true, data: result[0] })
+  }).$returningId()
+  const [row] = await db.select().from(influencer).where(eq(influencer.id, inserted.id)).limit(1)
+  return c.json({ success: true, data: row })
 })
 
 app.put('/:id', async (c) => {
   const body = await c.req.json()
-  const result = await db.update(influencer).set({ ...body, updatedAt: new Date().toISOString() }).where(eq(influencer.id, Number(c.req.param('id')))).returning()
-  return c.json({ success: true, data: result[0] })
+  const id = Number(c.req.param('id'))
+  await db.update(influencer).set({ ...body, updatedAt: new Date().toISOString() }).where(eq(influencer.id, id))
+  const [row] = await db.select().from(influencer).where(eq(influencer.id, id)).limit(1)
+  return c.json({ success: true, data: row })
 })
 
 app.delete('/:id', async (c) => {

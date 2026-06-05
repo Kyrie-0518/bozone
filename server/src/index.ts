@@ -3,9 +3,12 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { auth, initAuth } from './auth.js'
-import { initBusinessTables } from './db.js'
+import { initBusinessTables, db } from './db.js'
+import { user } from './db-schema.js'
+import { eq } from 'drizzle-orm'
 import { auditLogger } from './middleware/audit-logger.js'
 import { requireRole } from './middleware/rbac.js'
+import cron from 'node-cron'
 import tiktokShopsRoutes from './routes/tiktok-shops.js'
 import productsRoutes from './routes/products.js'
 import ordersRoutes from './routes/orders.js'
@@ -17,6 +20,9 @@ import adsRoutes from './routes/ads.js'
 import dashboardRoutes from './routes/dashboard.js'
 import auditLogsRoutes from './routes/audit-logs.js'
 import settingsRoutes from './routes/settings-api.js'
+import syncRoutes from './routes/sync.js'
+import { syncAllShops } from './services/tiktok-order-sync.js'
+import { syncAllProducts } from './services/tiktok-product-sync.js'
 
 const app = new Hono()
 
@@ -34,7 +40,6 @@ app.all('/api/auth/*', (c) => auth.handler(c.req.raw))
 app.use('/api/*', auditLogger())
 
 // ── Business Routes (with RBAC) ──
-// Apply per-route-group auth middleware, then mount routes
 app.use('/api/tiktok/*', requireRole('manager'))
 app.route('/api/tiktok', tiktokShopsRoutes)
 
@@ -68,6 +73,9 @@ app.route('/api/audit-logs', auditLogsRoutes)
 app.use('/api/settings/*', requireRole('admin'))
 app.route('/api/settings', settingsRoutes)
 
+app.use('/api/sync/*', requireRole('manager'))
+app.route('/api/sync', syncRoutes)
+
 const port = 3001
 
 await initAuth()
@@ -75,21 +83,71 @@ await initBusinessTables()
 
 serve({ fetch: app.fetch, port }, async () => {
   console.log(`[Bozone] Server ready at http://localhost:${port}`)
+
+  // ── Cron: auto-sync orders every 10 minutes ──
+  cron.schedule('*/10 * * * *', async () => {
+    try {
+      console.log('[Cron] Auto-syncing orders...')
+      await syncAllShops()
+    } catch (e: any) {
+      console.error('[Cron] Order sync failed:', e.message)
+    }
+  })
+
+  // ── Cron: auto-sync products every 2 hours ──
+  cron.schedule('0 */2 * * *', async () => {
+    try {
+      console.log('[Cron] Auto-syncing products...')
+      await syncAllProducts()
+    } catch (e: any) {
+      console.error('[Cron] Product sync failed:', e.message)
+    }
+  })
+
+  // ── Cron: daily token refresh at 3 AM ──
+  cron.schedule('0 3 * * *', async () => {
+    try {
+      console.log('[Cron] Refreshing expired tokens...')
+      const shops = await db.select().from(schema.tiktokShop).where(eq(schema.tiktokShop.syncEnabled, true))
+      for (const shop of shops) {
+        const { refreshToken: rt } = await import('./services/tiktok-auth.js')
+        try {
+          const newToken = await rt(shop.refreshToken)
+          const expiresAt = new Date(Date.now() + newToken.expires_in * 1000).toISOString()
+          await db.update(schema.tiktokShop).set({
+            accessToken: newToken.access_token,
+            refreshToken: newToken.refresh_token,
+            tokenExpiresAt: expiresAt,
+            updatedAt: new Date().toISOString(),
+          }).where(eq(schema.tiktokShop.id, shop.id))
+          console.log(`[Cron] Token refreshed for shop ${shop.shopId}`)
+        } catch (e: any) {
+          console.warn(`[Cron] Token refresh failed for ${shop.shopId}:`, e.message)
+        }
+      }
+    } catch (e: any) {
+      console.error('[Cron] Token refresh failed:', e.message)
+    }
+  })
+
+  console.log('[Cron] Scheduled: orders */10min, products */2h, token-refresh 3AM')
+
   seed().catch(console.error)
 })
 
 // ── Seed ──
-import { createClient } from '@libsql/client'
-const seedDb = createClient({ url: `file:${new URL('../data/bozone.db', import.meta.url).pathname}` })
+import * as schema from './db-schema.js'
+import { mysqlTable } from 'drizzle-orm/mysql-core'
 
 async function seed() {
-  await seedDb.execute("CREATE TABLE IF NOT EXISTS _seed (key TEXT PRIMARY KEY, value TEXT)")
-  const r = await seedDb.execute("SELECT value FROM _seed WHERE key='seeded'")
-  if (r.rows.length > 0) { console.log('[Seed] Skipped.'); return }
+  // Check if already seeded
+  const existing = await db.select().from(schema.setting).where(eq(schema.setting.key, 'seeded'))
+  if (existing.length > 0) { console.log('[Seed] Skipped.'); return }
 
   const accounts = [
     { name: '管理员', email: 'admin@bozone.cn', password: 'admin123', role: 'admin' },
-    { name: 'Kyrie', email: 'kyrie@bozone.cn', password: 'kyrie123', role: 'manager' },
+    { name: 'Kyrie', email: 'kyrie@bozone.cn', password: 'kyrie123', role: 'admin' },
+    { name: '运营测试', email: 'ops@bozone.cn', password: 'ops2024test', role: 'operator' },
   ]
 
   console.log('[Seed] Creating dev accounts...')
@@ -104,16 +162,16 @@ async function seed() {
       console.log(`  ${acc.email} → ${res.ok && !text.includes('error') ? 'OK' : 'FAIL'}`)
       // Set role after sign-up
       if (res.ok) {
-        await seedDb.execute({
-          sql: 'UPDATE "user" SET role = ? WHERE email = ?',
-          args: [acc.role, acc.email],
-        })
+        await db.update(schema.user)
+          .set({ role: acc.role } as any)
+          .where(eq(schema.user.email, acc.email))
         console.log(`  Role set: ${acc.email} → ${acc.role}`)
       }
     } catch (e: any) {
       console.error(`  ${acc.email} → ${e.message}`)
     }
   }
-  await seedDb.execute("INSERT INTO _seed (key, value) VALUES ('seeded', '1')")
+  // Mark as seeded
+  await db.insert(schema.setting).values({ key: 'seeded', value: '1' })
   console.log('[Seed] Done.')
 }
