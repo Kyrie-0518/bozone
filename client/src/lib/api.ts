@@ -1,4 +1,4 @@
-const BASE = 'http://localhost:3001'
+const BASE = ''
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
