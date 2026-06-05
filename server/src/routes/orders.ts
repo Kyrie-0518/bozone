@@ -9,12 +9,41 @@ app.get('/', async (c) => {
   const q = c.req.query('q') || ''
   const status = c.req.query('status') || ''
   const shopId = c.req.query('shopId') || ''
-  const query = db.select().from(orderTable).$dynamic()
-  if (q) query.where(like(orderTable.orderNo, `%${q}%`))
-  if (status) query.where(eq(orderTable.status, status))
-  if (shopId) query.where(eq(orderTable.shopId, Number(shopId)))
-  const rows = await query
-  return c.json({ success: true, data: rows })
+  let baseQuery = db.select({
+    id: orderTable.id,
+    orderNo: orderTable.orderNo,
+    shopId: orderTable.shopId,
+    buyerName: orderTable.buyerName,
+    status: orderTable.status,
+    paymentStatus: orderTable.paymentStatus,
+    logisticsStatus: orderTable.logisticsStatus,
+    trackingNo: orderTable.trackingNo,
+    carrier: orderTable.carrier,
+    itemTotal: orderTable.itemTotal,
+    shippingFee: orderTable.shippingFee,
+    discount: orderTable.discount,
+    taxes: orderTable.taxes,
+    actualAmount: orderTable.actualAmount,
+    currency: orderTable.currency,
+    remark: orderTable.remark,
+    orderTime: orderTable.orderTime,
+    shipDeadline: orderTable.shipDeadline,
+    createdAt: orderTable.createdAt,
+    updatedAt: orderTable.updatedAt,
+  }).from(orderTable).$dynamic()
+  if (q) baseQuery.where(like(orderTable.orderNo, `%${q}%`))
+  if (status) baseQuery.where(eq(orderTable.status, status))
+  if (shopId) baseQuery.where(eq(orderTable.shopId, Number(shopId)))
+
+  const rows = await baseQuery.orderBy(desc(orderTable.createdAt))
+
+  // Attach items for each order
+  const result = await Promise.all(rows.map(async (row: any) => {
+    const items = await db.select().from(orderItem).where(eq(orderItem.orderId, row.id))
+    return { ...row, items }
+  }))
+
+  return c.json({ success: true, data: result })
 })
 
 app.get('/:id', async (c) => {

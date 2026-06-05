@@ -211,69 +211,57 @@ export function OrdersPage() {
                 <tbody>
                   {orders.map((o: any) => {
                     const cfg = statusConfig[o.status] || statusConfig['IN_TRANSIT']
+                    const item = (o.items && o.items.length > 0) ? o.items[0] : null
                     return (
                       <tr key={o.id} className='group border-b border-slate-100/50 transition-colors hover:bg-blue-50/30'>
-                        {/* Product info: thumbnail + name + quantity */}
+                        {/* Product info: icon + name + quantity */}
                         <td className='px-4 py-3 min-w-[220px]'>
                           <div className='flex items-start gap-2.5'>
-                            <img
-                              src={o.productImage || `https://via.placeholder.com/48/e8e5e0/a0a0a0?text=📦`}
-                              alt=''
-                              className='h-10 w-10 rounded-lg object-cover bg-slate-100 shrink-0'
-                            />
+                            <div className='h-10 w-10 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 shrink-0 flex items-center justify-center text-lg'>📦</div>
                             <div className='min-w-0 flex-1'>
-                              <p className='text-xs font-medium text-slate-700 line-clamp-2 leading-snug'>{o.productName || o.itemName || '—'}</p>
+                              <p className='text-xs font-medium text-slate-700 line-clamp-2 leading-snug'>{item?.productName || '—'}</p>
                               <span className='inline-flex items-center gap-0.5 mt-0.5 text-[10px] text-muted-foreground'>
-                                <span>量 ×{o.quantity ?? 1}</span>
-                                {o.skuInfo && <span className='ml-1 truncate max-w-[120px]'>({String(o.skuInfo).slice(0, 30)})</span>}
+                                量 ×{item?.quantity ?? 1}
+                                {item?.sku && <span className='ml-1 truncate max-w-[120px]'>({String(item.sku).slice(0, 30)})</span>}
                               </span>
                             </div>
                           </div>
                         </td>
 
-                        {/* Order No */}
-                        <td className='px-4 py-3'>
-                          <span className='font-mono text-xs text-blue-600 font-medium'>{(o.orderNo || '').slice(-14)}</span>
-                        </td>
+                        {/* Order No — full */}
+                        <td className='px-4 py-3'><span className='font-mono text-xs text-blue-600 font-medium'>{o.orderNo || '—'}</span></td>
 
                         {/* Buyer */}
-                        <td className='px-4 py-3'>
-                          <span className='text-sm text-slate-700'>{o.buyerName?.replace(/\*+/g, '**') || '—'}</span>
-                        </td>
+                        <td className='px-4 py-3'><span className='text-sm text-slate-700'>{o.buyerName || '—'}</span></td>
 
                         {/* Amount */}
-                        <td className='px-4 py-3 text-right'>
-                          <span className='font-semibold text-blue-600 tabular-nums'>RM {Number(o.actualAmount || 0).toFixed(2)}</span>
-                        </td>
+                        <td className='px-4 py-3 text-right'><span className='font-semibold text-blue-600 tabular-nums'>RM {Number(o.actualAmount || 0).toFixed(2)}</span></td>
 
                         {/* Status Badge */}
-                        <td className='px-4 py-3'>
-                          <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${cfg?.color || 'bg-gray-100 text-gray-700'}`}>
-                            {cfg?.icon}{cfg?.label || o.status}
-                          </span>
-                        </td>
+                        <td className='px-4 py-3'><span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${cfg?.color || 'bg-gray-100 text-gray-700'}`}>{cfg?.icon}{cfg?.label || o.status}</span></td>
 
                         {/* Shop */}
-                        <td className='px-4 py-3'>
-                          <span className='text-xs text-slate-600'>{shops.find(s => s.id === o.shopId)?.name || '—'}</span>
-                        </td>
+                        <td className='px-4 py-3'><span className='text-xs text-slate-600'>{shops.find(s => s.id === o.shopId)?.name || '—'}</span></td>
 
-                        {/* Time */}
+                        {/* Time — full datetime */}
                         <td className='px-4 py-3 text-right text-xs text-slate-500 whitespace-nowrap'>
-                          {o.orderTime ? new Date(o.orderTime).toLocaleDateString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—'}
+                          {o.orderTime
+                            ? new Date(o.orderTime).toLocaleDateString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' })
+                            : (o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—')
+                          }
                         </td>
 
-                        {/* Logistics */}
+                        {/* Logistics: carrier + trackingNo */}
                         <td className='px-4 py-3'>
-                          <span className='text-[11px] text-slate-500'>{o.trackingNo ? `${o.carrier || ''} ${o.trackingNo.slice(-10)}` : '—'}</span>
+                          {o.trackingNo
+                            ? (<><span className='text-[11px] font-medium text-slate-700'>{o.carrier || ''}</span><br/><span className='font-mono text-[10px] text-blue-500'>{String(o.trackingNo).slice(-12)}</span></>)
+                            : (o.logisticsStatus ? <span className='text-[11px] text-slate-500'>{o.logisticsStatus}</span> : <span className='text-muted-foreground text-[11px]'>—</span>)
+                          }
                         </td>
 
                         {/* Action */}
                         <td className='px-4 py-3 text-center'>
-                          <button
-                            onClick={() => setSelectedOrder(o)}
-                            className='inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100 transition-colors'
-                          >
+                          <button onClick={() => setSelectedOrder(o)} className='inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100 transition-colors'>
                             <Eye className='h-3.5 w-3.5' /> 详情
                           </button>
                         </td>
