@@ -185,9 +185,11 @@ export async function refreshToken(refreshTokenStr: string) {
 }
 
 // ── Generic API call (with shop_cipher) ──
-export async function apiCall(endpoint: string, accessToken: string, shopCipher: string, opts?: { method?: string; body?: any }) {
+export async function apiCall(endpoint: string, accessToken: string, shopCipher: string, opts?: { method?: string; body?: any; _extraQuery?: Record<string, string> }) {
   const extra: Record<string, string> = {}
   if (shopCipher) extra.shop_cipher = shopCipher
+  // Merge extra query params (e.g., page_size, sort_order for orders/search)
+  if (opts?._extraQuery) Object.assign(extra, opts._extraQuery)
   return call(endpoint, accessToken, extra, opts)
 }
 

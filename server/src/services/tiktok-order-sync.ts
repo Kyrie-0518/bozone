@@ -73,6 +73,8 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
 
   try {
     // 1. Search orders (last 7 days)
+    // NOTE per SDK: page_size/sort_order/sort_field/shop_cipher are QUERY params,
+    //   only filter fields like create_time_ge go in JSON body
     const fromTime = Math.floor(Date.now() / 1000) - 7 * 86400
     const searchResult = await apiCall(
       '/order/202309/orders/search',
@@ -80,13 +82,13 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
       shopCipher,
       {
         method: 'POST',
+        // Query params are set via extraParams in apiCall → call()
+        // We need to pass page_size/sort as query params
         body: {
-          page_size: 50,
-          create_time_from: fromTime,
-          sort_by: 'create_time',
-          sort_type: 'ASC',
+          create_time_ge: fromTime,
         },
-      },
+        _extraQuery: { page_size: '50', sort_field: 'create_time', sort_order: 'ASC' },
+      } as any,
     )
 
     const orderList: Array<{ order_id: string; order_status: string }> =
