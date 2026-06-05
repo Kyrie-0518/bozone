@@ -28,24 +28,45 @@ app.use('*', cors({
 }))
 
 // ── Auth (before audit logger to avoid logging auth requests) ──
-app.on(['POST', 'GET'], '/api/auth/**', (c) => auth.handler(c.req.raw))
+app.all('/api/auth/*', (c) => auth.handler(c.req.raw))
 
 // ── Audit Logger (auto-log all /api/* requests) ──
 app.use('/api/*', auditLogger())
 
 // ── Business Routes (with RBAC) ──
-// Authentication required for all business routes via requireRole
-app.route('/api/tiktok', requireRole('manager'), tiktokShopsRoutes)
-app.route('/api/products', requireRole('manager'), productsRoutes)
-app.route('/api/orders', requireRole('operator'), ordersRoutes)
-app.route('/api/finance', requireRole('finance'), financeRoutes)
-app.route('/api/influencers', requireRole('operator'), influencersRoutes)
-app.route('/api/materials', requireRole('operator'), materialsRoutes)
-app.route('/api/inventory', requireRole('manager'), inventoryRoutes)
-app.route('/api/ads', requireRole('manager'), adsRoutes)
-app.route('/api/dashboard', requireRole('operator'), dashboardRoutes)
-app.route('/api/audit-logs', requireRole('admin'), auditLogsRoutes)
-app.route('/api/settings', requireRole('admin'), settingsRoutes)
+// Apply per-route-group auth middleware, then mount routes
+app.use('/api/tiktok/*', requireRole('manager'))
+app.route('/api/tiktok', tiktokShopsRoutes)
+
+app.use('/api/products/*', requireRole('manager'))
+app.route('/api/products', productsRoutes)
+
+app.use('/api/orders/*', requireRole('operator'))
+app.route('/api/orders', ordersRoutes)
+
+app.use('/api/finance/*', requireRole('finance'))
+app.route('/api/finance', financeRoutes)
+
+app.use('/api/influencers/*', requireRole('operator'))
+app.route('/api/influencers', influencersRoutes)
+
+app.use('/api/materials/*', requireRole('operator'))
+app.route('/api/materials', materialsRoutes)
+
+app.use('/api/inventory/*', requireRole('manager'))
+app.route('/api/inventory', inventoryRoutes)
+
+app.use('/api/ads/*', requireRole('manager'))
+app.route('/api/ads', adsRoutes)
+
+app.use('/api/dashboard/*', requireRole('operator'))
+app.route('/api/dashboard', dashboardRoutes)
+
+app.use('/api/audit-logs/*', requireRole('admin'))
+app.route('/api/audit-logs', auditLogsRoutes)
+
+app.use('/api/settings/*', requireRole('admin'))
+app.route('/api/settings', settingsRoutes)
 
 const port = 3001
 

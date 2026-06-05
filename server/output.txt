@@ -1,0 +1,7 @@
+[Auth] Tables ready.
+[DB] All business tables ready.
+[Bozone] Server ready at http://localhost:3001
+[Seed] Creating dev accounts...
+  admin@bozone.cn → FAIL
+  kyrie@bozone.cn → FAIL
+[Seed] Done.
