@@ -30,11 +30,9 @@ function sign(params: Record<string, string>, path: string, body?: any): string 
     str += JSON.stringify(body)
   }
 
-  // Step 5: wrap with app_secret
-  // Step 6: HMAC-SHA256
-  return crypto.createHmac('sha256', `${appSecret}${str}${appSecret}`)
-    .update(`${appSecret}${str}${appSecret}`)
-    .digest('hex')
+  // Step 5-6: wrap with app_secret, then HMAC-SHA256 with app_secret as key
+  const wrapped = `${appSecret}${str}${appSecret}`
+  return crypto.createHmac('sha256', appSecret).update(wrapped).digest('hex')
 }
 
 // ── Generic signed API call (matches SDK's generateSign + fetch) ──
