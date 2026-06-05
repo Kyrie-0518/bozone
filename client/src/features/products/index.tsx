@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Search, Plus, LayoutGrid, List, Loader2, RefreshCw, PackageSearch,
-  Package, Eye,
+  Package, Eye, TrendingUp,
 } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
