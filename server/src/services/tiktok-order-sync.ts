@@ -86,27 +86,52 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
   let total = 0, success = 0, fail = 0
 
   try {
-    // 1. Search orders (last 7 days) — per SDK spec:
-    //    Query params: page_size, sort_field, sort_order, shop_cipher
+    // 1. Search ALL orders — per SDK spec:
+    //    Query params: page_size, sort_field, sort_order, shop_cipher, page_token
     //    Body: create_time_ge (Unix timestamp filter)
-    const fromTime = Math.floor(Date.now() / 1000) - 7 * 86400
-    console.log(`[OrderSync] Searching orders from ${new Date(fromTime * 1000).toISOString()} ...`)
+    //    Use pagination with next_page_token to get everything
+    const fromTime = Math.floor(new Date('2020-01-01').getTime() / 1000) // Sync all orders from shop creation
+    console.log(`[OrderSync] Searching ALL orders from ${new Date(fromTime * 1000).toISOString()} ...`)
 
-    const searchResult = await apiCall(
-      '/order/202309/orders/search',
-      token,
-      shopCipher,
-      {
-        method: 'POST',
-        body: { create_time_ge: fromTime },
-        _extraQuery: { page_size: '50', sort_field: 'create_time', sort_order: 'DESC' },
-      } as any,
-    )
+    const allOrders: TKOrderBrief[] = []
+    let pageToken = ''
+    let pageCount = 0
+    const MAX_PAGES = 200 // Safety limit: 200 pages × 50 = 10k orders max
 
-    // Response structure: { data: { orders: [...], next_page_token: "..." } }
-    const orderList: TKOrderBrief[] = searchResult?.data?.orders || []
+    do {
+      const queryExtras: Record<string, string> = {
+        page_size: '50',
+        sort_field: 'create_time',
+        sort_order: 'DESC',
+      }
+      if (pageToken) queryExtras.page_token = pageToken
+
+      const searchResult = await apiCall(
+        '/order/202309/orders/search',
+        token,
+        shopCipher,
+        {
+          method: 'POST',
+          body: { create_time_ge: fromTime },
+          _extraQuery: queryExtras,
+        } as any,
+      )
+
+      // Response structure: { data: { orders: [...], next_page_token: "..." } }
+      const pageOrders: TKOrderBrief[] = searchResult?.data?.orders || []
+      allOrders.push(...pageOrders)
+      pageToken = searchResult?.data?.next_page_token || ''
+      pageCount++
+
+      console.log(`[OrderSync] Page ${pageCount}: got ${pageOrders.length} orders, total=${allOrders.length}, hasMore=${!!pageToken}`)
+      
+      // Small delay between pages to avoid rate limiting
+      if (pageToken) await new Promise(r => setTimeout(r, 500))
+    } while (pageToken && pageCount < MAX_PAGES)
+
+    const orderList = allOrders
     total = orderList.length
-    console.log(`[OrderSync] Found ${total} orders for shop ${shopRow.shopId}`)
+    console.log(`[OrderSync] Found ${total} orders for shop ${shopRow.shopId} (${pageCount} pages)`)
 
     // 2. Each search result already has full details — upsert directly
     for (const tkOrder of orderList) {
