@@ -94,6 +94,9 @@ export function buildAuthUrl(): { authUrl: string; state: string } {
   const appKey = env('TIKTOK_APP_KEY')
   const appSecret = env('TIKTOK_APP_SECRET')
   const redirectUri = env('TIKTOK_REDIRECT_URI')
+  // service_id (授权ID) is DIFFERENT from app_key (应用密钥)!
+  // From Partner Center: 授权ID=764444..., 应用密钥=6k44pdou0umit
+  const serviceId = env('TIKTOK_SERVICE_ID', appKey)
 
   if (!appKey || !appSecret || !redirectUri) {
     throw new Error(
@@ -103,12 +106,11 @@ export function buildAuthUrl(): { authUrl: string; state: string } {
   }
 
   const state = makeState()
-  const serviceId = appKey // SDK uses app_key as service_id
   const scopes = ['seller.order', 'seller.product', 'seller.shop', 'seller.finance'].join(',')
 
   const url = `https://services.tiktokshop.com/open/authorize?service_id=${serviceId}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}`
 
-  console.log(`[TikTok] Auth URL: service_id=${serviceId.slice(0, 8)}... redirect=${redirectUri.slice(0, 40)}...`)
+  console.log(`[TikTok] Auth URL: service_id=${serviceId.slice(0, 8)}... (APP_KEY=${appKey.slice(0,8)}...) redirect=${redirectUri.slice(0, 40)}...`)
   return { authUrl: url, state }
 }
 
