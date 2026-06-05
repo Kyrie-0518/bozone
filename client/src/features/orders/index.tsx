@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Search, Download, RefreshCw, Loader2, PackageOpen,
   ShoppingCart, Truck, AlertCircle, CheckCircle2, Clock,
+  Eye,
 } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
@@ -11,50 +12,50 @@ import { ConfigDrawer } from '@/components/config-drawer'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { api } from '@/lib/api'
 
 // ── Status config (TikTok standard + Chinese labels) ──
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  UNPAID:           { label: '待付款', color: 'bg-slate-100 text-slate-700', icon: <Clock className='h-3.5 w-3.5' /> },
-  ON_HOLD:          { label: '审核中', color: 'bg-amber-100 text-amber-700', icon: <AlertCircle className='h-3.5 w-3.5' /> },
-  AWAITING_SHIPMENT:{ label: '待发货', color: 'bg-blue-100 text-blue-700', icon: <PackageOpen className='h-3.5 w-3.5' /> },
-  PARTIALLY_SHIPPING:{ label: '部分发货', color: 'bg-blue-100 text-blue-700', icon: <Truck className='h-3.5 w-3.5' /> },
-  AWAITING_COLLECTION:{ label: '待取件', color: 'bg-cyan-100 text-cyan-700', icon: <PackageOpen className='h-3.5 w-3.5' /> },
-  IN_TRANSIT:       { label: '运输中', color: 'bg-indigo-100 text-indigo-700', icon: <Truck className='h-3.5 w-3.5' /> },
-  DELIVERED:         { label: '已签收', color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle2 className='h-3.5 w-3.5' /> },
-  COMPLETED:         { label: '已完成', color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle2 className='h-3.5 w-3.5' /> },
-  CANCELLED:         { label: '已取消', color: 'bg-red-100 text-red-700', icon: <AlertCircle className='h-3.5 w-3.5' /> },
-  RETURN_REQUESTED:  { label: '退货申请', color: 'bg-orange-100 text-orange-700', icon: <AlertCircle className='h-3.5 w-3.5' /> },
-  RETURN_IN_PROGRESS:{ label: '退货中', color: 'bg-orange-100 text-orange-700', icon: <AlertCircle className='h-3.5 w-3.5' /> },
+  UNPAID:           { label: '待付款', color: 'bg-slate-100 text-slate-700 border-slate-200', icon: <Clock className='h-3 w-3' /> },
+  ON_HOLD:          { label: '审核中', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: <AlertCircle className='h-3 w-3' /> },
+  AWAITING_SHIPMENT:{ label: '待发货', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: <PackageOpen className='h-3 w-3' /> },
+  PARTIALLY_SHIPPING:{ label: '部分发货', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: <Truck className='h-3 w-3' /> },
+  AWAITING_COLLECTION:{ label: '待取件', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: <PackageOpen className='h-3 w-3' /> },
+  IN_TRANSIT:       { label: '运输中', color: 'bg-indigo-100 text-indigo-700 border-indigo-200', icon: <Truck className='h-3 w-3' /> },
+  DELIVERED:         { label: '已签收', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className='h-3 w-3' /> },
+  COMPLETED:         { label: '已完成', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className='h-3 w-3' /> },
+  CANCELLED:         { label: '已取消', color: 'bg-red-100 text-red-700 border-red-200', icon: <AlertCircle className='h-3 w-3' /> },
+  RETURN_REQUESTED:  { label: '退货申请', color: 'bg-orange-100 text-orange-700 border-orange-200', icon: <AlertCircle className='h-3 w-3' /> },
+  RETURN_IN_PROGRESS:{ label: '退货中', color: 'bg-orange-100 text-orange-700 border-orange-200', icon: <AlertCircle className='h-3 w-3' /> },
 }
 
-const statusMap: Record<string, string> = {
-  '待付款': 'UNPAID', '审核中': 'ON_HOLD', '待发货': 'AWAITING_SHIPMENT',
-  '部分发货': 'PARTIALLY_SHIPPING', '待取件': 'AWAITING_COLLECTION',
-  '运输中': 'IN_TRANSIT', '已签收': 'DELIVERED', '已完成': 'COMPLETED',
-  '已取消': 'CANCELLED', '退货申请': 'RETURN_REQUESTED', '退货中': 'RETURN_IN_PROGRESS',
-}
-const allStatuses = Object.keys(statusMap)
+// ── Tab filter config ──
+const statusTabs = [
+  { key: 'all',        label: '全部',       statusKeys: [] },
+  { key: 'UNPAID',     label: '待支付',     statusKeys: ['UNPAID'] },
+  { key: 'PENDING',    label: '待发货',     statusKeys: ['AWAITING_SHIPMENT','ON_HOLD','PARTIALLY_SHIPPING'] },
+  { key: 'SHIPPED',    label: '已发货',     statusKeys: ['IN_TRANSIT','AWAITING_COLLECTION'] },
+  { key: 'COMPLETED',  label: '已完结',     statusKeys: ['COMPLETED','DELIVERED'] },
+  { key: 'CANCELLED',  label: '申请取消',   statusKeys: ['CANCELLED'] },
+  { key: 'RETURN',     label: '申请退款',   statusKeys: ['RETURN_REQUESTED','RETURN_IN_PROGRESS'] },
+]
 
 export function OrdersPage() {
   const [search, setSearch] = useState('')
-  const [shopFilter, setShopFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [activeTab, setActiveTab] = useState('all')
   const [selectedOrder, setSelectedOrder] = useState<any>(null)
   const qc = useQueryClient()
 
-  // Load shops for filter
+  // Load shops
   const { data: shopsData } = useQuery({ queryKey: ['shops'], queryFn: () => api.shops.list() })
   const shops = shopsData?.shops || []
 
-  // Load orders from API
+  // Load orders
   const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['orders', search, statusFilter, shopFilter],
-    queryFn: () => api.orders.list(search, statusFilter !== 'all' ? statusFilter : '', shopFilter !== 'all' ? shopFilter : ''),
+    queryKey: ['orders', search, activeTab],
+    queryFn: () => api.orders.list(search, activeTab === 'all' ? '' : activeTab, ''),
   })
   const orders = ordersData?.data || []
 
@@ -65,11 +66,12 @@ export function OrdersPage() {
 
   // ── Computed stats ──
   const stats = useMemo(() => {
-    const total = orders.length
-    const revenue = orders.reduce((s, o) => s + (Number(o.actualAmount) || 0), 0)
-    const pending = orders.filter(o => ['UNPAID','AWAITING_SHIPMENT'].includes(o.status)).length
-    const inTransit = orders.filter(o => ['IN_TRANSIT','PARTIALLY_SHIPPING'].includes(o.status).length)
-    return { total, revenue, pending, inTransit }
+    const todayPending = orders.filter(o => ['UNPAID'].includes(o.status)).length
+    const cancelReq   = orders.filter(o => ['CANCELLED'].includes(o.status)).length
+    const returnReq   = orders.filter(o => ['RETURN_REQUESTED','RETURN_IN_PROGRESS'].includes(o.status)).length
+    const dailyCancel = orders.filter(o => ['CANCELLED'].includes(o.status)).length
+    const completed   = orders.filter(o => ['COMPLETED','DELIVERED'].includes(o.status)).length
+    return { todayPending, cancelReq, returnReq, dailyCancel, completed }
   }, [orders])
 
   return (
@@ -81,7 +83,7 @@ export function OrdersPage() {
 
       <Main>
         {/* ═══ Header ═══ */}
-        <div className='mb-6 flex flex-wrap items-center justify-between gap-4'>
+        <div className='mb-5 flex flex-wrap items-center justify-between gap-4'>
           <div className='flex items-center gap-3'>
             <div className='flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-md shadow-blue-200'>
               <ShoppingCart className='h-5 w-5 text-white' />
@@ -94,58 +96,85 @@ export function OrdersPage() {
           <div className='flex items-center gap-2'>
             <Button variant='outline' size='sm' onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
               {syncMutation.isPending ? <Loader2 className='mr-1.5 h-3.5 w-3.5 animate-spin' /> : <RefreshCw className='mr-1.5 h-3.5 w-3.5' />}
-              同步订单
+              刷新
             </Button>
-            <Button variant='outline' size='sm'><Download className='mr-1.5 h-3.5 w-3.5' />导出</Button>
+            <Button variant='outline' size='sm'><Download className='mr-1.5 h-3.5 w-3.5' />AI 导入</Button>
           </div>
         </div>
 
-        {/* ═══ Stat Cards ═══ */}
-        <div className='mb-5 grid grid-cols-4 gap-3'>
+        {/* ═══ Stat Cards — 5 white cards with colored values ═══ */}
+        <div className='mb-5 grid grid-cols-5 gap-3'>
           {[
-            { label: '总订单数', value: stats.total.toLocaleString(), sub: `待处理 ${stats.pending}`, color: 'from-blue-500 to-blue-600', bg: 'blue-50', icon: ShoppingCart },
-            { label: '总营收', value: `¥${stats.revenue.toFixed(0)}`, sub: 'MYR 原币种合计', color: 'from-emerald-500 to-emerald-600', bg: 'emerald-50', icon: CheckCircle2 },
-            { label: '待处理', value: String(stats.pending), sub: `${((stats.pending / Math.max(stats.total,1)) * 100).toFixed(0)}%`, color: 'from-amber-500 to-amber-600', bg: 'amber-50', icon: Clock },
-            { label: '配送中', value: String(stats.inTransit), sub: '物流进行中', color: 'from-indigo-500 to-indigo-600', bg: 'indigo-50', icon: Truck },
+            { label: '今日待发货', value: String(stats.todayPending), color: 'text-blue-600' },
+            { label: '申请取消',   value: String(stats.cancelReq),   color: 'text-amber-500' },
+            { label: '退货退款',   value: String(stats.returnReq),   color: 'text-red-500' },
+            { label: '日动取消',   value: String(stats.dailyCancel), color: 'text-red-500' },
+            { label: '已完结',     value: String(stats.completed),   color: 'text-emerald-500' },
           ].map((stat, i) => (
-            <Card key={i} className={`border-0 shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br ${stat.bg}`}>
+            <Card key={i} className='border-slate-200/60 shadow-sm hover:shadow-md transition-shadow'>
               <CardContent className='p-4'>
-                <div className='flex items-center justify-between mb-2'>
-                  <span className='text-[11px] font-medium text-muted-foreground uppercase tracking-wider'>{stat.label}</span>
-                  <div className={`h-7 w-7 rounded-lg bg-gradient-to-br ${stat.color} flex items-center justify-center`}>
-                    <stat.icon className='h-3.5 w-3.5 text-white' />
-                  </div>
-                </div>
-                <p className='text-xl font-bold tabular-nums text-slate-800'>{stat.value}</p>
-                <p className='text-[11px] text-muted-foreground mt-0.5'>{stat.sub}</p>
+                <p className='text-[11px] font-medium text-muted-foreground mb-1'>{stat.label}</p>
+                <p className={`text-2xl font-bold tabular-nums ${stat.color}`}>{stat.value}</p>
               </CardContent>
             </Card>
           ))}
         </div>
 
-        {/* ═══ Filters Bar ═══ */}
-        <div className='mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-slate-50/80 p-3 border border-slate-200/60'>
-          <div className='relative flex-1 min-w-[200px] max-w-sm'>
-            <Search className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none' />
-            <Input placeholder='搜索订单号 / 买家名...' className='pl-9 h-9 bg-white border-slate-200/80 focus:border-blue-400' value={search} onChange={(e) => setSearch(e.target.value)} />
+        {/* ═══ Status Tabs + Search Bar ═══ */}
+        <div className='mb-4 space-y-3'>
+          {/* Horizontal tab buttons with red badges */}
+          <div className='flex flex-wrap items-center gap-2'>
+            {statusTabs.map(tab => {
+              const isActive = activeTab === tab.key
+              let count = 0
+              if (tab.key !== 'all') {
+                if (tab.key === 'UNPAID') count = orders.filter(o => o.status === 'UNPAID').length
+                else if (tab.key === 'PENDING') count = orders.filter(o => tab.statusKeys.includes(o.status)).length
+                else if (tab.key === 'SHIPPED') count = orders.filter(o => tab.statusKeys.includes(o.status)).length
+                else if (tab.key === 'COMPLETED') count = orders.filter(o => tab.statusKeys.includes(o.status)).length
+                else if (tab.key === 'CANCELLED') count = orders.filter(o => o.status === 'CANCELLED').length
+                else if (tab.key === 'RETURN') count = orders.filter(o => tab.statusKeys.includes(o.status)).length
+              }
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`relative inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {tab.label}
+                  {count > 0 && (
+                    <span className='ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white leading-none'>
+                      {count > 99 ? '99+' : count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
-          <Select value={shopFilter} onValueChange={setShopFilter}>
-            <SelectTrigger className='h-9 w-[140px] bg-white border-slate-200/80'><SelectValue placeholder='全部店铺' /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value='all'>🏪 全部店铺</SelectItem>
-              {shops.map((s: any) => <SelectItem key={s.id} value={String(s.id)}>{(s.name || s.shopId).slice(0, 12)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className='h-9 w-[130px] bg-white border-slate-200/80'><SelectValue placeholder='全部状态' /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value='all'>📊 全部状态</SelectItem>
-              {allStatuses.map(s => {
-                const cfg = statusConfig[statusMap[s] || '']
-                return <SelectItem key={s} value={s}>{cfg?.label || s}</SelectItem>
-              })}
-            </SelectContent>
-          </Select>
+
+          {/* Search row with 🔍 button + 📤 export */}
+          <div className='flex flex-wrap items-center gap-3'>
+            <div className='relative flex-1 min-w-[240px] max-w-sm'>
+              <Input
+                placeholder='搜索订单号 / 买家名称'
+                className='h-9 pr-20 bg-white border-slate-200/80 focus:border-blue-400'
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' || e.target.value}
+              />
+              <button
+                className='absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 transition-colors'
+              >
+                <Search className='h-3.5 w-3.5' /> 搜索
+              </button>
+            </div>
+            <SelectBox placeholder='全部店铺' options={['HomeLife Co','FreshGuard']} />
+            <Button variant='outline' size='sm' className='gap-1.5'><Download className='h-3.5 w-3.5' />导出</Button>
+          </div>
         </div>
 
         {/* ═══ Table ═══ */}
@@ -159,7 +188,7 @@ export function OrdersPage() {
               <div className='flex flex-col items-center justify-center py-20 text-muted-foreground'>
                 <PackageOpen className='mb-3 h-12 w-12 opacity-40' />
                 <p className='font-medium'>暂无订单数据</p>
-                <p className='text-sm mt-1'>点击「同步订单」从 TikTok Shop 拉取最新订单</p>
+                <p className='text-sm mt-1'>点击「刷新」从 TikTok Shop 拉取最新订单</p>
                 <Button variant='outline' size='sm' className='mt-4' onClick={() => syncMutation.mutate()}>
                   <RefreshCw className='mr-1.5 h-3.5 w-3.5' /> 立即同步
                 </Button>
@@ -168,43 +197,85 @@ export function OrdersPage() {
               <table className='w-full'>
                 <thead>
                   <tr className='bg-slate-50/80 border-b border-slate-200/60'>
-                    <th className='px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500'>订单号</th>
-                    <th className='px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500'>买家 / 店铺</th>
-                    <th className='px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500'>状态</th>
-                    <th className='px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500'>金额</th>
-                    <th className='px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500'>运费</th>
+                    <th className='px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500'>商品信息</th>
+                    <th className='px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500'>订单编号</th>
+                    <th className='px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500'>买家</th>
+                    <th className='px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500'>实付金额</th>
+                    <th className='px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500'>状态</th>
+                    <th className='px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500'>店铺</th>
+                    <th className='px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500'>下单时间</th>
                     <th className='px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500'>物流</th>
-                    <th className='px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500'>时间</th>
+                    <th className='px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-500'>操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map((o: any) => {
                     const cfg = statusConfig[o.status] || statusConfig['IN_TRANSIT']
                     return (
-                      <tr key={o.id} className='group border-b border-slate-100/50 transition-colors hover:bg-blue-50/30 cursor-pointer' onClick={() => setSelectedOrder(o)}>
+                      <tr key={o.id} className='group border-b border-slate-100/50 transition-colors hover:bg-blue-50/30'>
+                        {/* Product info: thumbnail + name + quantity */}
+                        <td className='px-4 py-3 min-w-[220px]'>
+                          <div className='flex items-start gap-2.5'>
+                            <img
+                              src={o.productImage || `https://via.placeholder.com/48/e8e5e0/a0a0a0?text=📦`}
+                              alt=''
+                              className='h-10 w-10 rounded-lg object-cover bg-slate-100 shrink-0'
+                            />
+                            <div className='min-w-0 flex-1'>
+                              <p className='text-xs font-medium text-slate-700 line-clamp-2 leading-snug'>{o.productName || o.itemName || '—'}</p>
+                              <span className='inline-flex items-center gap-0.5 mt-0.5 text-[10px] text-muted-foreground'>
+                                <span>量 ×{o.quantity ?? 1}</span>
+                                {o.skuInfo && <span className='ml-1 truncate max-w-[120px]'>({String(o.skuInfo).slice(0, 30)})</span>}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Order No */}
                         <td className='px-4 py-3'>
                           <span className='font-mono text-xs text-blue-600 font-medium'>{(o.orderNo || '').slice(-14)}</span>
                         </td>
+
+                        {/* Buyer */}
                         <td className='px-4 py-3'>
-                          <div className='text-sm font-medium text-slate-700 max-w-[140px] truncate'>{o.buyerName || '—'}</div>
-                          <div className='text-[11px] text-muted-foreground'>{shops.find(s => s.id === o.shopId)?.name?.slice(0,10) || ''}</div>
+                          <span className='text-sm text-slate-700'>{o.buyerName?.replace(/\*+/g, '**') || '—'}</span>
                         </td>
+
+                        {/* Amount */}
+                        <td className='px-4 py-3 text-right'>
+                          <span className='font-semibold text-blue-600 tabular-nums'>RM {Number(o.actualAmount || 0).toFixed(2)}</span>
+                        </td>
+
+                        {/* Status Badge */}
                         <td className='px-4 py-3'>
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${cfg?.color || 'bg-gray-100 text-gray-700'}`}>
+                          <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${cfg?.color || 'bg-gray-100 text-gray-700'}`}>
                             {cfg?.icon}{cfg?.label || o.status}
                           </span>
                         </td>
-                        <td className='px-4 py-3 text-right'>
-                          <span className='font-semibold text-slate-800 tabular-nums'>{Number(o.actualAmount || 0).toFixed(2)}</span>
-                          <span className='text-[10px] text-muted-foreground ml-1'>{o.currency || 'MYR'}</span>
-                        </td>
-                        <td className='px-4 py-3 text-right tabular-nums text-slate-600 text-sm'>{Number(o.shippingFee || 0).toFixed(2)}</td>
+
+                        {/* Shop */}
                         <td className='px-4 py-3'>
-                          <span className='text-[11px] text-slate-500'>{o.logisticsStatus || o.carrier || '—'}</span>
-                          {o.trackingNo && <span className='block text-[10px] text-blue-500 font-mono mt-0.5 max-w-[120px] truncate'>{o.trackingNo}</span>}
+                          <span className='text-xs text-slate-600'>{shops.find(s => s.id === o.shopId)?.name || '—'}</span>
                         </td>
-                        <td className='px-4 py-3 text-right text-[11px] text-slate-500 whitespace-nowrap'>
-                          {o.orderTime ? new Date(o.orderTime).toLocaleDateString('zh-CN', { month:'short', day:'numeric' }) : '—'}
+
+                        {/* Time */}
+                        <td className='px-4 py-3 text-right text-xs text-slate-500 whitespace-nowrap'>
+                          {o.orderTime ? new Date(o.orderTime).toLocaleDateString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—'}
+                        </td>
+
+                        {/* Logistics */}
+                        <td className='px-4 py-3'>
+                          <span className='text-[11px] text-slate-500'>{o.trackingNo ? `${o.carrier || ''} ${o.trackingNo.slice(-10)}` : '—'}</span>
+                        </td>
+
+                        {/* Action */}
+                        <td className='px-4 py-3 text-center'>
+                          <button
+                            onClick={() => setSelectedOrder(o)}
+                            className='inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100 transition-colors'
+                          >
+                            <Eye className='h-3.5 w-3.5' /> 详情
+                          </button>
                         </td>
                       </tr>
                     )
@@ -261,16 +332,16 @@ export function OrdersPage() {
                         ['运费', `-${selectedOrder.shippingFee?.toFixed(2) || '0.00'} ${selectedOrder.currency || 'MYR'}`],
                         ['平台优惠', `-${selectedOrder.discount?.toFixed(2) || '0.00'} ${selectedOrder.currency || 'MYR'}`, true],
                         ['税费', `${selectedOrder.taxes?.toFixed(2) || '0.00'} ${selectedOrder.currency || 'MYR'}`],
-                      ]                      .map(([label, val], i) => (
+                      ].map(([label, val], i) => (
                         <div key={i} className='flex justify-between items-center py-1.5 border-b border-slate-100/50 last:border-0'>
                           <span className='text-slate-500'>{label}</span>
-                          <span className={`tabular-nums font-medium ${label === '平台优惠' ? 'text-destructive' : 'text-slate-700'}`}>{val as string}</span>
+                          <span className={`tabular-nums font-medium ${(val as string).startsWith('-') ? 'text-destructive' : 'text-slate-700'}`}>{val as string}</span>
                         </div>
                       ))}
                       <div className='flex justify-between items-center pt-2 border-t-2 border-t-slate-200 mt-1'>
                         <span className='font-bold text-slate-800'>实付金额</span>
                         <span className='text-lg font-bold tabular-nums text-blue-600'>
-                          ¥{selectedOrder.actualAmount?.toFixed(2)} {selectedOrder.currency || 'MYR'}
+                          RM{selectedOrder.actualAmount?.toFixed(2)} {selectedOrder.currency || 'MYR'}
                         </span>
                       </div>
                     </div>
@@ -289,5 +360,46 @@ export function OrdersPage() {
         </Sheet>
       </Main>
     </>
+  )
+}
+
+// ── Lightweight Select component (inline, no shadcn dependency for this context) ──
+function SelectBox({ placeholder, options }: { placeholder: string; options: string[] }) {
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
+  return (
+    <div className='relative'>
+      <button
+        type='button'
+        onClick={() => setOpen(!open)}
+        className='h-9 w-[140px] rounded-md border border-slate-200/80 bg-white px-3 text-left text-sm text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-between'
+      >
+        <span>{value || placeholder}</span>
+      </button>
+      {open && (
+        <>
+          <div className='fixed inset-0 z-30' onClick={() => setOpen(false)} />
+          <div className='absolute top-full left-0 z-40 mt-1 w-44 rounded-lg border border-slate-200 bg-white shadow-lg py-1 animate-in fade-in zoom-in-95'>
+            <button
+              type='button'
+              className='block w-full px-3 py-1.5 text-left text-sm text-slate-600 hover:bg-blue-50 hover:text-blue-700'
+              onClick={() => { setValue(''); setOpen(false) }}
+            >
+              全部店铺
+            </button>
+            {options.map(opt => (
+              <button
+                key={opt}
+                type='button'
+                className='block w-full px-3 py-1.5 text-left text-sm text-slate-600 hover:bg-blue-50 hover:text-blue-700'
+                onClick={() => { setValue(opt); setOpen(false) }}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   )
 }
