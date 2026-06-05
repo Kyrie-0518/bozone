@@ -10,6 +10,11 @@ function env(key: string, fallback = ''): string {
   return process.env[key] || fallback
 }
 
+// ── App key used for API signing (may differ from service_id used in OAuth auth URL) ──
+function apiAppKey(): string {
+  return env('TIKTOK_API_APP_KEY') || env('TIKTOK_SERVICE_ID') || env('TIKTOK_APP_KEY')
+}
+
 // ── Official signing: https://partner.tiktokshop.com/docv2/page/67c83e0799a75104986ae498 ──
 function sign(params: Record<string, string>, path: string, body?: any): string {
   const appSecret = env('TIKTOK_APP_SECRET')
@@ -41,7 +46,7 @@ async function call(
   extraParams: Record<string, string> = {},
   opts?: { method?: string; body?: any }
 ) {
-  const appKey = env('TIKTOK_APP_KEY')
+  const appKey = apiAppKey()
   const apiBase = env('TIKTOK_API_BASE', 'https://open-api.tiktokglobalshop.com')
 
   const timestamp = Math.floor(Date.now() / 1000).toString()
@@ -49,6 +54,8 @@ async function call(
   params.sign = sign(params, path, opts?.body)
 
   const url = `${apiBase}${path}?${new URLSearchParams(params)}`
+
+  console.log(`[TikTok API] ${opts?.method || 'GET'} ${path} app_key=${appKey.slice(0,8)}...`)
 
   const res = await fetch(url, {
     method: opts?.method || 'GET',
@@ -118,7 +125,7 @@ export function buildAuthUrl(): { authUrl: string; state: string } {
 const AUTH_HOST = 'https://auth.tiktok-shops.com'
 
 export async function exchangeCode(code: string): Promise<TokenResponse> {
-  const appKey = env('TIKTOK_APP_KEY')
+  const appKey = apiAppKey()
   const appSecret = env('TIKTOK_APP_SECRET')
 
   const params = new URLSearchParams({ app_key: appKey, app_secret: appSecret, auth_code: code, grant_type: 'authorized_code' })
@@ -158,7 +165,7 @@ export async function exchangeCode(code: string): Promise<TokenResponse> {
 
 // ── OAuth: Refresh token ──
 export async function refreshToken(refreshTokenStr: string) {
-  const appKey = env('TIKTOK_APP_KEY')
+  const appKey = apiAppKey()
   const appSecret = env('TIKTOK_APP_SECRET')
 
   const params = new URLSearchParams({ app_key: appKey, app_secret: appSecret, refresh_token: refreshTokenStr, grant_type: 'authorized_code' })
