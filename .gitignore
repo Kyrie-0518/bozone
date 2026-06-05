@@ -17,3 +17,12 @@ mysql-data/
 # TanStack temp
 .tanstack/tmp/
 
+# TikTok SDK (auto-generated, 2500+ files)
+nodejs_sdk_extracted/
+
+# Database tool temp files
+query
+
+# Windows temp files
+*.bat
+

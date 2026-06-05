@@ -1,7 +1,8 @@
-# Bozone 开发执行计划 v1.0
+# Bozone 开发执行计划 v1.1
 
 > **更新日期**: 2026-06-05
-> **当前完成度**: 前后端框架 95% | TikTok API 已打通 | ✅ 阶段 2 订单/商品同步+前端增强全部完成 | 下一步: 阶段 3 财务引擎
+> **当前完成度**: 阶段1 ✅ 100% | 阶段2 ✅ 95% (订单/商品同步已打通) | 下一步: 阶段3 财务引擎
+> **线上状态**: 服务器部署中 (8.138.36.120) | TikTok Shop 授权成功 | 订单137条+商品16个已同步
 
 ---
 
@@ -14,8 +15,9 @@
 5. [阶段 4: 达人 + AI → 提运营效率](#阶段-4-达人--ai)
 6. [阶段 5: 库存 + 广告 + 收尾](#阶段-5-库存--广告--收尾)
 7. [附录 A: 开发流程规范](#附录-a-开发流程规范)
-8. [附录 B: 订单管理 — TikTok API 对接方案](#附录-b-订单管理--tiktok-api-对接方案)
-9. [附录 C: 商品管理 — TikTok API 对接方案](#附录-c-商品管理--tiktok-api-对接方案)
+8. [附录 B: 订单管理 — TikTok API 对接方案（已验证）](#附录-b-订单管理--tiktok-api-对接方案)
+9. [附录 C: 商品管理 — TikTok API 对接方案（已验证）](#附录-c-商品管理--tiktok-api-对接方案)
+10. [附录 D: 系统自检记录](#附录-d-系统自检记录)
 
 ---
 
@@ -185,11 +187,12 @@
 ### 阶段 1 完成标志
 
 ```
-✅ git log 有提交历史
-✅ 不同角色登录看到不同菜单/权限
-✅ 操作日志页面自动有全量记录
-✅ 仪表盘显示基于真实数据的4卡片+图表
-✅ 修改 tailwind 主题颜色后全站统一变化
+✅ git log 有提交历史 (已推送到 GitHub)
+✅ 不同角色登录看到不同菜单/权限 (RBAC 中间件正常工作)
+✅ 操作日志页面自动有全量记录 (audit-logger 全局拦截 /api/*)
+✅ 仪表盘显示基于真实数据的4卡片+图表 (try-catch 兜底，空数据不崩溃)
+✅ 修改 tailwind 主题颜色后全站统一变化 (#2563eb 品牌色 + Slate 灰阶)
+✅ CORS 跨域配置完善 (credentials: true, maxAge: 86400)
 ```
 
 ---
@@ -429,11 +432,12 @@ TikTok SKU → 本地 product_sku 或 product JSON 字段
 ### 阶段 2 完成标志
 
 ```
-✅ 点击「同步订单」,TikTok 真实订单出现在订单列表中
-✅ 订单可筛选/排序/查看详情（含商品明细+物流信息）
-✅ 点击「同步商品」,TikTok 真实商品/SKU 出现在商品列表中
-✅ 每个商品可配置采购成本和重量
+✅ 点击「同步订单」,TikTok 真实订单出现在订单列表中 (137+条，分页拉取全部历史)
+✅ 订单可筛选/排序（按状态/店铺），含 TikTok 标准状态映射 (UNPAID→待付款 等)
+✅ 点击「同步商品」,TikTok 真实商品/SKU 出现在商品列表中 (16个，字段: title/sellerSku/salePrice/inventory)
+✅ 每个商品可配置采购成本和重量 (编辑面板)
 ✅ 商品可切换到卡片视图浏览
+✅ API 字段对齐官方 SDK (page_size查询参数, id/order_id, line_items, price.salePrice)
 ```
 
 ---
@@ -903,24 +907,28 @@ pm2 restart bozone
 }
 ```
 
-### B.4 数据映射：TikTok → 本地 order 表
+### B.4 数据映射：TikTok → 本地 order 表（已验证 ✅）
 
 ```
-TikTok 字段           → 本地 order 表字段
-─────────────────────────────────────────
-order_id             → id (or platform_order_id)
-order_status         → status
-create_time          → createdAt (秒转 ISO 8601)
-payment.total_amount → totalAmount (保留原始币种)
-payment.currency     → currency
-payment.shipping_fee → shippingFee
-payment.platform_discount → platformDiscount
-payment.tax          → tax
-delivery.*           → deliveryAddress (JSON 存储)
-order_lines[]        → order_item 表逐条入库
-order_lines[].sku_id → order_item.skuId
-order_lines[].quantity → order_item.quantity
-order_lines[].price.amount → order_item.unitPrice
+TikTok 字段 (SDK 实际返回)     → 本地 order 表字段
+────────────────────────────────────────────
+id (非 order_id!)              → orderNo
+status                          → status (UNPAID/IN_TRANSIT 等)
+createTime                     → orderTime (Unix秒→ISO 8601)
+payment.amount.value_string    → actualAmount (嵌套对象!)
+payment.shipping_fee           → shippingFee (同上格式)
+payment.platform_discount      → discount
+payment.tax                    → taxes
+trackingNumber                 → trackingNo
+shippingProvider              → carrier
+line_items[] (非 order_lines)  → order_item 表逐条入库
+line_items[].sellerSku        → order_item.sku
+line_items[].product_name      → order_item.productName
+line_items[].quantity          → order_item.quantity
+recipientAddress.name          → buyerName
+
+⚠️ 重要: page_size/sort_order/shop_cipher 必须是 URL 查询参数，不是 body!
+⚠️ 重要: 订单详情用 GET /order/202309/orders?ids=xxx (查询参数)，不是路径参数!
 ```
 
 ### B.5 同步防重策略
@@ -995,18 +1003,22 @@ RETURN_IN_PROGRESS     → 退货中        → 红
 }
 ```
 
-### C.3 数据映射：TikTok → 本地 product 表
+### C.3 数据映射：TikTok → 本地 product 表（已验证 ✅）
 
 ```
-TikTok 字段           → 本地 product 表
-─────────────────────────────────────────
-product_id           → platformProductId
-title                → name
-product_status       → status (ACTIVE→上架, INACTIVE→下架)
-category.name        → category (文本存储)
-main_images[0].url   → mainImage
-skus[]               → skus (JSON.stringify 存储)
-package_weight       → weight (克)
+TikTok 字段 (SDK 实际返回)     → 本地 product 表字段
+────────────────────────────────────────────
+id                              → platformProductId
+title (非 name!)               → name
+status (值是 ACTIVATE 非 ACTIVE!) → status (ACTIVATE→上架, SELLER_DEACTIVATED→下架)
+skus[].sellerSku               → sku
+skus[].price.salePrice          → sellPrice (纯字符串 "10.99"!)
+skus[].inventory[0].quantity    → stock (仓库库存数组!)
+images[]                       → images (JSON数组)
+
+⚠️ 搜索结果不含 category_name、package_weight — 这些需调详情接口获取
+⚠️ price 不是 {amount: string} 对象，而是 {salePrice: string} 纯字符串!
+⚠️ stock 不在 SKU 上，而是在 inventory[{quantity, warehouseId}] 数组中!
 ```
 
 ### C.4 SKU 存储策略
@@ -1055,24 +1067,87 @@ TikTok 返回 main_images 数组 → 取第一张存 mainImage 字段
 ## 总结: 推荐的执行顺序
 
 ```
-当前完成度: ████████████████░░░░ 85%
+当前完成度: ██████████████████░ 95%
 
-Phase 1 (本周)
-  └─ 1.1 Git → 1.2 RBAC → 1.3 审计日志 → 1.4 仪表盘 → 1.5 UI统一
+Phase 1 ✅ (已完成)
+  └─ 1.1 Git → 1.2 RBAC → 1.3 审计日志 → 1.4 仪表盘(try-catch兜底) → 1.5 UI统一
 
-Phase 2 (第2-3周)  ← 从这里开始需要写新代码最多
-  └─ 2.1 订单同步引擎 → 2.2 订单管理增强 → 2.3 商品同步引擎 → 2.4 商品管理增强
+Phase 2 ✅ (已完成 - 核心功能)
+  ├─ 2.1 订单同步引擎 ✅ — 分页拉取全部历史订单(137+条)，SDK字段对齐
+  │   关键修复: page_size必须为查询参数, order_id→id, order_lines→line_items
+  │   价格格式: amount.value_string (嵌套对象提取)
+  ├─ 2.2 订单管理前端 ✅ — 列表+筛选+状态标签+CORS跨域
+  ├─ 2.3 商品同步引擎 ✅ — 分页拉取全部商品(16个)，SDK字段对齐
+  │   关键修复: title(非name), sellerSku, price.salePrice(字符串), inventory[].quantity
+  │   状态映射: ACTIVE→ACTIVATE(正确值)
+  └─ 2.4 商品管理前端 ✅ — 列表展示+成本配置
 
-Phase 3 (第3-5周)  ← 核心差异化功能
+Phase 3 🔄 (下一步 - 核心差异化)
   └─ 3.1 OrderCost 表 → 3.2 利润引擎 → 3.3 费用模板 → 3.4 汇率 → 3.5 报表
 
-Phase 4 (第5-6周)
+Phase 4 ⏳ (待开发)
   └─ 4.1 达人增强 → 4.2 AI素材库
 
-Phase 5 (第6-8周)
+Phase 5 ⏳ (待开发)
   └─ 5.1 库存 → 5.2 广告 → 5.3 导出 → 5.4 收尾
 ```
 
 ---
 
-**文档版本**: v1.0 | **作者**: Bozone Dev Team | **最后更新**: 2026-06-05
+**文档版本**: v1.1 | **作者**: Bozone Dev Team | **最后更新**: 2026-06-05
+
+---
+
+## 附录 D: 系统自检记录
+
+> **自检日期**: 2026-06-05
+> **检查范围**: 全项目文件清理 + 代码质量 + 安全性
+
+### D.1 已删除的垃圾文件
+
+| 文件 | 原因 |
+|------|------|
+| `console.log('ERR` | 误创建的空文件（括号不匹配） |
+| `console.log('ERROR` | 同上 |
+| `{console.log(JSON.stringify(r.rows))` | 复制代码片段时误创建 |
+| `{const` | 同上 |
+| `{}` | 同上 |
+| `query` | MySQL Workbench 临时查询缓存文件 |
+
+### D.2 .gitignore 新增规则
+
+```
+nodejs_sdk_extracted/   # TikTok SDK (2500+ 自动生成文件，不入库)
+query                  # 数据库工具临时文件
+*.bat                  # Windows 脚本 (本地开发用)
+```
+
+### D.3 安全问题处理
+
+| 问题 | 状态 | 说明 |
+|------|------|------|
+| `tools/test-api.js` 含明文 APP_SECRET | ⚠️ 需处理 | 建议删除或加密，密钥已轮换 |
+| `tools/replace-localhost.js` 硬编码IP | ⚠️ 需处理 | 危险脚本，建议删除 |
+| `server/.env` 含敏感信息 | ✅ 已在 .gitignore | 不入库 |
+| CORS 配置 | ✅ 已修复 | 扩展 Origin/Header/Method |
+
+### D.4 项目文件清单（保留）
+
+| 目录/文件 | 数量/大小 | 用途 | 状态 |
+|-----------|-----------|------|------|
+| `server/src/routes/` | 15 个路由文件 | 全部业务 API | ✅ 整洁无冗余 |
+| `server/src/services/` | 3 个服务 | auth/order/product sync | ✅ 核心链路完整 |
+| `server/src/middleware/` | 2 个 | RBAC + 审计日志 | ✅ 正常工作 |
+| `client/src/features/` | 10+ 功能模块 | 前端页面 | ✅ 架构清晰 |
+| `client/src/components/` | UI 组件库 | shadcn/ui 封装 | ✅ 统一设计系统 |
+| `docs/` | 7 个文档 | PRD/DEV_PLAN/设计系统 | ✅ 完整 |
+| `tools/zip-it.mjs` | 1 个 | 部署打包脚本 | ✅ 保留 |
+| `pm2-*.bat` | 4 个 | PM2 开发辅助脚本 | ✅ 本地开发用 |
+| `ecosystem.config.cjs` | 1 个 | PM2 进程配置 | ✅ 保留(含路径配置) |
+
+### D.5 已知待修复项
+
+1. **前端构建缓存** — 浏览器偶尔加载旧 JS chunk 文件（需强制清缓存）
+2. **Dashboard 图表数据** — 空订单时显示空图表（已加 try-catch 兜底）
+3. **达人模块 mock 数据** - `influencers/index.tsx` 含硬编码示例数据，需替换为真实 API
+4. **定时同步** - 当前仅支持手动触发同步，尚未实现 node-cron 定时任务
