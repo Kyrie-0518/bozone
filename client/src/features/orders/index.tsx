@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Search, Download, Filter, RefreshCw, Loader2, PackageOpen,
+  Search, Download, RefreshCw, Loader2, PackageOpen,
   ShoppingCart, Truck, AlertCircle, CheckCircle2, Clock,
 } from 'lucide-react'
 import { Header } from '@/components/layout/header'
@@ -261,10 +261,10 @@ export function OrdersPage() {
                         ['运费', `-${selectedOrder.shippingFee?.toFixed(2) || '0.00'} ${selectedOrder.currency || 'MYR'}`],
                         ['平台优惠', `-${selectedOrder.discount?.toFixed(2) || '0.00'} ${selectedOrder.currency || 'MYR'}`, true],
                         ['税费', `${selectedOrder.taxes?.toFixed(2) || '0.00'} ${selectedOrder.currency || 'MYR'}`],
-                      ].map(([label, val], i) => (
+                      ]                      .map(([label, val], i) => (
                         <div key={i} className='flex justify-between items-center py-1.5 border-b border-slate-100/50 last:border-0'>
                           <span className='text-slate-500'>{label}</span>
-                          <span className={`tabular-nums font-medium ${label.includes('优惠') ? 'text-destructive' : 'text-slate-700'}`}>{val as string}</span>
+                          <span className={`tabular-nums font-medium ${label === '平台优惠' ? 'text-destructive' : 'text-slate-700'}`}>{val as string}</span>
                         </div>
                       ))}
                       <div className='flex justify-between items-center pt-2 border-t-2 border-t-slate-200 mt-1'>
