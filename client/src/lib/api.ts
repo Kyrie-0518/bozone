@@ -6,6 +6,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     credentials: 'include',
     ...options,
   })
+  if (res.status === 401) {
+    // 未登录或会话过期，跳转到登录页
+    window.location.href = '/sign-in'
+    throw new Error('Unauthorized')
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Request failed' }))
     throw new Error(err.error || `HTTP ${res.status}`)
