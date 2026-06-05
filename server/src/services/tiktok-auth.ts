@@ -10,9 +10,10 @@ function env(key: string, fallback = ''): string {
   return process.env[key] || fallback
 }
 
-// ── App key used for API signing (may differ from service_id used in OAuth auth URL) ──
+// ── App key used for API signing (this is the 应用密钥 from Partner Center) ──
+// Note: This is DIFFERENT from service_id (授权ID) used in OAuth auth URL!
 function apiAppKey(): string {
-  return env('TIKTOK_API_APP_KEY') || env('TIKTOK_SERVICE_ID') || env('TIKTOK_APP_KEY')
+  return env('TIKTOK_APP_KEY') // Always use APP_KEY for API signing (6k44pdou0umit)
 }
 
 // ── Official signing: https://partner.tiktokshop.com/docv2/page/67c83e0799a75104986ae498 ──
