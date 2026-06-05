@@ -6,37 +6,48 @@ import { eq, and } from 'drizzle-orm'
 // Per SDK ProductSearch response
 interface TKProductBrief {
   id: string
-  name?: string
+  title?: string
   status?: string
   create_time?: number
   update_time?: number
   skus?: Array<{
     id: string
-    seller_sku: string
-    sku_name?: string
+    sellerSku?: string
     price?: {
-      amount?: { currency: string; value_string: string }
+      currency?: string
+      salePrice?: string
+      taxExclusivePrice?: string
     }
-    stock?: number
-    package_weight_g?: number
+    inventory?: Array<{
+      quantity?: number
+      warehouseId?: string
+    }>
     image?: any
   }>
   images?: Array<any>
   description?: string
-  category_id?: string
-  category_name?: string
 }
 
-function extractAmount(val: any): number {
-  if (!val) return 0
-  if (val.value_string) return parseFloat(val.value_string) || 0
-  if (val.amount?.value_string) return parseFloat(val.amount.value_string) || 0
-  return parseFloat(String(val)) || 0
+function extractPrice(sku: any): number {
+  if (!sku?.price) return 0
+  // SDK: price.salePrice is a plain string like "10.99"
+  const p = sku.price.salePrice || sku.price.taxExclusivePrice || ''
+  return parseFloat(String(p)) || 0
+}
+
+function extractStock(sku: any): number {
+  if (!sku?.inventory?.length) return 0
+  // Sum across all warehouses
+  return sku.inventory.reduce((sum: number, inv: any) => sum + (inv.quantity || 0), 0)
 }
 
 const statusMap: Record<string, string> = {
-  ACTIVE: '上架', INACTIVE: '下架', FROZEN: '冻结',
-  DELETED: '已删除', DRAFT: '草稿', REJECTED: '驳回',
+  ACTIVE: '上架', ACTIVATE: '上架',
+  INACTIVE: '下架', SELLER_DEACTIVATED: '下架', PLATFORM_DEACTIVATED: '下架',
+  FROZEN: '冻结', FREEZE: '冻结',
+  DELETED: '已删除',
+  DRAFT: '草稿', PENDING: '审核中', FAILED: '驳回',
+  SCHEDULED: '定时发布',
 }
 
 // Sync products for a specific shop (with pagination)
@@ -96,28 +107,35 @@ export async function syncShopProducts(shopRow: typeof tiktokShop.$inferSelect):
         const productId = tkProd.id
         if (!productId) { fail++; continue }
 
+        // Use correct SDK field names: title, sellerSku, price.salePrice, inventory[].quantity
         const skus = tkProd.skus || []
-        let mainImage: string = tkProd.images?.[0]?.url || ''
-        if (!mainImage && skus[0]) {
+        
+        let mainImage = ''
+        if (tkProd.images?.length) {
+          mainImage = typeof tkProd.images[0] === 'string' ? tkProd.images[0] : tkProd.images[0]?.url || ''
+        }
+        if (!mainImage && skus[0]?.image) {
           const img = skus[0].image
-          if (typeof img === 'string') mainImage = img
-          else if (Array.isArray(img)) mainImage = img[0]?.url || ''
-          else if (img?.url) mainImage = img.url
+          mainImage = typeof img === 'string' ? img : img?.url || ''
         }
 
-        const allImages = (tkProd.images || []).map((i: any) => i.url).filter(Boolean)
-        const totalStock = skus.reduce((sum: number, s: any) => sum + (s.stock || 0), 0)
+        const allImages = (tkProd.images || []).map((i: any) => 
+          typeof i === 'string' ? i : i.url
+        ).filter(Boolean)
+
+        const totalStock = skus.reduce((sum, s) => sum + extractStock(s), 0)
         const minPrice = skus.length > 0
-          ? Math.min(...skus.map((s: any) => extractAmount(s.price)))
+          ? Math.min(...skus.map(s => extractPrice(s)))
           : 0
 
+        const firstSku = skus[0] || {}
         const productData = {
-          name: tkProd.name || '',
-          sku: skus[0]?.seller_sku || '',
+          name: tkProd.title || '',
+          sku: firstSku.sellerSku || productId,
           image: mainImage,
           images: JSON.stringify(allImages),
-          category: tkProd.category_name || '',
-          weight: skus[0]?.package_weight_g ? skus[0].package_weight_g / 1000 : 0,
+          category: '',  // search response doesn't include category name
+          weight: 0,     // search response doesn't include weight
           stock: totalStock,
           sellPrice: minPrice,
           platformProductId: productId,
