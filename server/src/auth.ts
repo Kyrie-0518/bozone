@@ -86,7 +86,7 @@ export async function initAuth() {
 }
 
 export const auth = betterAuth({
-  baseURL: 'http://localhost:5174',
+  baseURL: process.env.FRONTEND_URL || 'http://localhost:5174',
   secret: 'bozone-dev-secret-change-in-production',
   database: drizzleAdapter(db, { provider: 'mysql', schema }),
   emailAndPassword: {
