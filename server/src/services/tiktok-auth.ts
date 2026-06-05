@@ -184,8 +184,43 @@ export async function apiCall(endpoint: string, accessToken: string, shopCipher:
 }
 
 // ── Test connection ──
-export async function testConnection(accessToken: string, _shopCipher: string) {
-  return call('/authorization/202309/shops', accessToken)
+export async function testConnection(accessToken: string, _shopCipher?: string) {
+  // Try multiple endpoints to verify token works
+  const errors: string[] = []
+  
+  // Try 1: Get authorized shops
+  try {
+    const result = await call('/authorization/202309/shops', accessToken)
+    console.log('[Test] /authorization/202309/shops OK:', JSON.stringify(result).slice(0, 200))
+    return { endpoint: 'shops', data: result }
+  } catch (e: any) {
+    errors.push(`shops: ${e.message}`)
+    console.warn('[Test] /authorization/202309/shops failed:', e.message)
+  }
+
+  // Try 2: Get shop info with cipher
+  if (_shopCipher) {
+    try {
+      const result = await apiCall('/authorization/202309/shops', accessToken, _shopCipher)
+      console.log('[Test] shops with cipher OK:', JSON.stringify(result).slice(0, 200))
+      return { endpoint: 'shops_with_cipher', data: result }
+    } catch (e: any) {
+      errors.push(`shops_cipher: ${e.message}`)
+      console.warn('[Test] shops with cipher failed:', e.message)
+    }
+  }
+
+  // Try 3: Simple order list (just to verify token validity)
+  try {
+    const result = await call('/order/202309/orders/list', accessToken, { page_size: '1' })
+    console.log('[Test] orders/list OK')
+    return { endpoint: 'orders', data: result }
+  } catch (e: any) {
+    errors.push(`orders: ${e.message}`)
+    console.warn('[Test] orders/list failed:', e.message)
+  }
+
+  throw new Error(`所有API端点均失败: ${errors.join('; ')}`)
 }
 
 // ── Get authorized shops ──

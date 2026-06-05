@@ -151,12 +151,10 @@ app.post('/test', async (c) => {
       }
     }
 
-    if (!cipher) {
-      return c.json({ success: false, error: '缺少店铺 cipher，请在 Partner Center 查看店铺信息' }, 400)
-    }
-
-    console.log('[Test] Testing connection for shop:', shop.shopId)
-    const result = await testConnection(shop.accessToken, cipher)
+    console.log('[Test] Testing connection for shop:', shop.shopId, 'cipher:', cipher ? 'yes' : 'no')
+    
+    // Test with or without cipher
+    const result = await testConnection(shop.accessToken, cipher || undefined)
     return c.json({ success: true, result })
   } catch (e: any) {
     console.error('[Test] Error:', e.message)
