@@ -33,6 +33,7 @@ export function ProductsPage() {
     queryFn: () => api.shops.list(),
   })
   const shops = shopsData?.shops || []
+  void shops
 
   const createMutation = useMutation({
     mutationFn: (body: any) => api.products.create(body),

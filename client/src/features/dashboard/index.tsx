@@ -189,7 +189,7 @@ export function Dashboard() {
                       borderRadius: '8px',
                       fontSize: '12px',
                     }}
-                    formatter={(value: number) => [`¥${value}`, '销售额']}
+                    formatter={(value: any) => [`¥${value}`, '销售额']}
                   />
                   <Bar dataKey='revenue' fill='#D97706' radius={[0, 6, 6, 0]} barSize={14} />
                 </BarChart>
@@ -242,8 +242,8 @@ export function Dashboard() {
                         ¥{order.profit.toFixed(2)}
                       </td>
                       <td className='px-3 py-3'>
-                        <Badge variant={statusDisplayMap[order.status]?.variant || statusMap[order.status]?.variant || 'secondary'}>
-                          {statusDisplayMap[order.status]?.label || statusMap[order.status]?.label || order.status}
+                        <Badge variant={(statusDisplayMap as any)[order.status]?.variant || (statusMap as any)[order.status]?.variant || 'secondary'}>
+                          {(statusDisplayMap as any)[order.status]?.label || (statusMap as any)[order.status]?.label || order.status}
                         </Badge>
                       </td>
                       <td className='px-3 py-3 text-sm text-muted-foreground'>

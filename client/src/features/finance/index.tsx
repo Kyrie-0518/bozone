@@ -36,8 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   AreaChart,
   Area,
-  BarChart,
-  Bar,
+  CartesianGrid,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,

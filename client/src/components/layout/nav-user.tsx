@@ -25,8 +25,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { SignOutDialog } from '@/components/sign-out-dialog'
-
 type NavUserProps = {
   user: {
     name: string

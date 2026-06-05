@@ -9,7 +9,6 @@ import {
   Search,
   Download,
   Play,
-  Pause,
   ExternalLink,
   BarChart3,
   Zap,
@@ -40,8 +39,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,

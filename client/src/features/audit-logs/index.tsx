@@ -46,7 +46,7 @@ export default function AuditLogsPage() {
     <div className="space-y-6">
       <PageHeader
         title="操作日志"
-        description="系统自动记录所有 API 操作，保留 30 天"
+        subtitle="系统自动记录所有 API 操作，保留 30 天"
         icon={ScrollText}
       />
 
