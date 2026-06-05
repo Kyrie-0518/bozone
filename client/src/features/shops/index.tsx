@@ -76,6 +76,7 @@ export function ShopsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: authCode.trim() }),
+        credentials: 'include',
       })
       const json = await res.json()
       if (json.success) {
@@ -87,6 +88,7 @@ export function ShopsPage() {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ name: authShopName, region: authRegion }),
+              credentials: 'include',
             })
           } catch {}
         }
@@ -105,6 +107,7 @@ export function ShopsPage() {
     try {
       const res = await fetch('http://8.138.36.120:3001/api/tiktok/test', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+        credentials: 'include',
       })
       const json = await res.json()
       showToast(json.success ? 'success' : 'error', json.success ? '连接成功' : '连接失败: ' + json.error)
@@ -117,6 +120,7 @@ export function ShopsPage() {
     try {
       const res = await fetch('http://8.138.36.120:3001/api/tiktok/refresh', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shop_id: shopId }),
+        credentials: 'include',
       })
       const json = await res.json()
       showToast(json.success ? 'success' : 'error', json.success ? 'Token 已刷新' : json.error)
@@ -141,6 +145,7 @@ export function ShopsPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cipher }),
+        credentials: 'include',
       })
       const json = await res.json()
       showToast(json.success ? 'success' : 'error', json.success ? 'Cipher 已更新' : json.error || '更新失败')
