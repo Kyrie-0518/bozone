@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Users,
   Plus,
@@ -7,7 +7,17 @@ import {
   Package,
   DollarSign,
   BarChart3,
+  Globe2,
+  TrendingUp,
+  Eye,
+  Star,
+  Video,
+  ShoppingBag,
+  UserCheck,
+  Loader2,
+  ExternalLink,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ThemeSwitch } from '@/components/theme-switch'
@@ -41,11 +51,75 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import {
   AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
+import { api } from '@/lib/api'
 
-// ── Types ──
+// ── Types (TikTok API) ──
+interface TkCreator {
+  creatorOpenId: string
+  username: string
+  nickname: string
+  avatar?: { url?: string }
+  selectionRegion?: string
+  bioDescription?: string
+  followerCount: number
+  ecVideoCount?: number
+  ecLiveCount?: number
+  avgEcVideoViewCount?: number
+  avgEcLiveUv?: number
+  ecVideoEngagementRate?: number
+  gmv?: { amount?: number; currency?: string; range?: { formatted?: string } }
+  videoGmv?: { amount?: number; currency?: string; range?: { formatted?: string } }
+  liveGmv?: { amount?: number; currency?: string; range?: { formatted?: string } }
+  unitsSoldRange?: { formatted?: string }
+  topFollowerDemographics?: Array<{ gender?: string; ageGroup?: string; region?: string }>
+  categoryIds?: string[]
+}
+
+interface CreatorPerformance {
+  creatorOpenId: string
+  username: string
+  nickname: string
+  avatar?: { url?: string }
+  bioDescription?: string
+  selectionRegion?: string
+  profileTtUri?: string
+  followerCount: number
+  followerAge?: Array<{ ageRange: string; percentage: number }>
+  followerGender?: Array<{ gender: string; percentage: number }>
+  followerLocation?: Array<{ region: string; percentage: number }>
+  gmv?: { amount: number; currency: string; range: { formatted: string } }
+  videoGmv?: { amount: number; currency: string; range: { formatted: string } }
+  liveGmv?: { amount: number; currency: string; range: { formatted: string } }
+  gpm?: number
+  videoGpm?: number
+  liveGpm?: number
+  unitsSold?: number
+  unitsSoldRange?: { formatted: string }
+  ecVideoCount: number
+  ecLiveCount: number
+  avgEcVideoPlayCount: number
+  avgEcVideoLikeCount: number
+  avgEcVideoCommentCount: number
+  avgEcVideoShareCount: number
+  avgEcLiveUv: number
+  ecVideoEngagementRate: number
+  ecLiveEngagementRate: number
+  brandCollaborationCount?: number
+  topCollaboratedBrandIds?: string[]
+  promotedProductNum?: number
+  avgCommissionRate?: number
+  rating?: number
+  categoryGmvDistribution?: Array<{ categoryId: string; categoryName?: string; gmv: number }>
+  contentGmvDistribution?: Array<{ contentType: string; gmv: number }>
+  pps?: number
+  postRate?: number
+}
+
+// ── Local Types (existing CRUD) ──
 type InfluencerStatus = 'pending' | 'contacted' | 'sample_sent' | 'cooperating' | 'terminated'
 type SampleStatus = 'requested' | 'approved' | 'shipped' | 'delivered' | 'video_received' | 'rejected'
 
@@ -73,7 +147,7 @@ interface CommissionSettlement {
   status: 'pending' | 'paid'; paidDate?: string
 }
 
-// ── Mock Data ──
+// ── Mock Data (local CRUD — will be replaced by real API later) ──
 const mockInfluencers: Influencer[] = [
   { id: '1', name: 'Sarah Beauty', tiktokId: '@sarahbeauty_my', followers: 125000, country: '马来西亚', whatsapp: '+60 12-345-6789', product: '冰箱除味剂', commissionRate: 15, status: 'cooperating', notes: '头部达人，带货能力强', lastContact: '2026-05-28' },
   { id: '2', name: 'CleanHome MY', tiktokId: '@cleanhome_my', followers: 85000, country: '马来西亚', commissionRate: 12, status: 'sample_sent', lastContact: '2026-05-27' },
@@ -137,6 +211,20 @@ const settlementStatusConfig: Record<string, { label: string; variant: 'default'
 }
 
 const countries = ['马来西亚', '菲律宾', '新加坡', '泰国', '越南', '印尼']
+const regions = ['MY', 'PH', 'SG', 'TH', 'VN', 'ID']
+
+// ── Helpers ──
+function formatFollowers(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
+  return n.toString()
+}
+
+function formatNumber(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
+  return String(n)
+}
 
 export function InfluencersPage() {
   const [search, setSearch] = useState('')
@@ -146,16 +234,46 @@ export function InfluencersPage() {
     name: '', tiktokId: '', followers: 0, country: '', whatsapp: '', product: '', commissionRate: 15, notes: '',
   })
 
-  const filtered = mockInfluencers.filter((inf) =>
-    inf.name.toLowerCase().includes(search.toLowerCase()) || inf.tiktokId.toLowerCase().includes(search.toLowerCase())
-  )
+  // AS-001: TikTok search state
+  const [tkSearch, setTkSearch] = useState('')
+  const [tkRegion, setTkRegion] = useState('')
+  const [tkFollowerMin, setTkFollowerMin] = useState<string>('')
+  const [selectedCreator, setSelectedCreator] = useState<TkCreator | null>(null)
+
+  // AS-001: Query TikTok marketplace creators
+  const { data: tkSearchResult, isLoading: tkLoading, error: tkError } = useQuery({
+    queryKey: ['influencers-tiktok-search', tkSearch, tkRegion, tkFollowerMin],
+    queryFn: () => api.get('/api/influencers/tiktok/search', {
+      params: {
+        keyword: tkSearch || undefined,
+        region: tkRegion || undefined,
+        followerMin: tkFollowerMin ? Number(tkFollowerMin) : undefined,
+      },
+    }).then((r: any) => r.data),
+    enabled: true, // Always load on mount, auto-refetch on filter change
+    staleTime: 2 * 60_000, // cache 2 min
+  })
+
+  // AS-002: Query selected creator's performance detail
+  const { data: creatorPerf, isLoading: perfLoading } = useQuery({
+    queryKey: ['creator-perf', selectedCreator?.creatorOpenId],
+    queryFn: () => api.get(`/api/influencers/tiktok/${selectedCreator!.creatorOpenId}/performance`)
+      .then((r: any) => r.data),
+    enabled: !!selectedCreator?.creatorOpenId,
+    staleTime: 5 * 60_000,
+  })
+
+  const filtered = useMemo(() =>
+    mockInfluencers.filter((inf) =>
+      inf.name.toLowerCase().includes(search.toLowerCase()) || inf.tiktokId.toLowerCase().includes(search.toLowerCase())
+    ), [search])
 
   const addInfluencer = () => {
     setDialogOpen(false)
     setNewInfluencer({ name: '', tiktokId: '', followers: 0, country: '', whatsapp: '', product: '', commissionRate: 15, notes: '' })
   }
 
-  const formatFollowers = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : n.toString()
+  const creators = tkSearchResult?.creators || []
 
   return (
     <>
@@ -167,12 +285,16 @@ export function InfluencersPage() {
       </Header>
 
       <Main>
+        {/* ═══ Header ═══ */}
         <div className='mb-6 flex flex-wrap items-center justify-between gap-4'>
-          <div>
-            <h1 className='text-2xl font-bold tracking-tight'>达人BD</h1>
-            <p className='text-sm text-muted-foreground mt-1'>
-              TikTok 达人全链路管理 · 建联 → 寄样 → 带货 → 结算
-            </p>
+          <div className='flex items-center gap-3'>
+            <div className='flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-purple-200'>
+              <Users className='h-5 w-5 text-white' />
+            </div>
+            <div>
+              <h1 className='text-2xl font-bold tracking-tight text-slate-800'>达人BD</h1>
+              <p className='text-xs text-muted-foreground mt-0.5'>TikTok 达人全链路管理 · 发现 → 建联 → 寄样 → 带货 → 结算</p>
+            </div>
           </div>
           <div className='flex gap-2'>
             <Dialog open={batchMsgOpen} onOpenChange={setBatchMsgOpen}>
@@ -261,15 +383,141 @@ export function InfluencersPage() {
           </div>
         </div>
 
-        <Tabs defaultValue='roster' className='space-y-6'>
+        <Tabs defaultValue='discover' className='space-y-6'>
           <TabsList>
+            <TabsTrigger value='discover'><Globe2 className='mr-1.5 h-4 w-4' />达人发现</TabsTrigger>
             <TabsTrigger value='roster'><Users className='mr-1.5 h-4 w-4' />达人列表</TabsTrigger>
             <TabsTrigger value='samples'><Package className='mr-1.5 h-4 w-4' />寄样管理</TabsTrigger>
             <TabsTrigger value='performance'><BarChart3 className='mr-1.5 h-4 w-4' />带货效果</TabsTrigger>
             <TabsTrigger value='settlement'><DollarSign className='mr-1.5 h-4 w-4' />佣金结算</TabsTrigger>
           </TabsList>
 
-          {/* ── 达人列表 ── */}
+          {/* ════════ AS-001: TikTok 达人发现 ════════ */}
+          <TabsContent value='discover' className='space-y-4'>
+            {/* Search & Filter Bar */}
+            <Card className='border-slate-200/60 shadow-sm'>
+              <CardContent className='p-4'>
+                <div className='flex flex-wrap items-center gap-3'>
+                  <div className='relative flex-1 min-w-[220px] max-w-md'>
+                    <Search className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
+                    <Input
+                      placeholder='搜索达人用户名或昵称...'
+                      className='pl-9 h-9 bg-white border-slate-200/80 focus:border-blue-400'
+                      value={tkSearch}
+                      onChange={(e) => setTkSearch(e.target.value)}
+                    />
+                  </div>
+                  <Select value={tkRegion} onValueChange={setTkRegion}>
+                    <SelectTrigger className='w-[140px] h-9'><SelectValue placeholder='全部地区' /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value=''>全部地区</SelectItem>
+                      {regions.map(r => (
+                        <SelectItem key={r} value={r}>
+                          {{ MY: '🇲🇾 马来西亚', PH: '🇵🇭 菲律宾', SG: '🇸🇬 新加坡', TH: '🇹🇭 泰国', VN: '🇻🇳 越南', ID: '🇮🇩 印尼' }[r] || r}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className='relative min-w-[140px]'>
+                    <Input
+                      placeholder='最小粉丝数'
+                      className='h-9 pr-16 bg-white border-slate-200/80'
+                      type='number'
+                      value={tkFollowerMin}
+                      onChange={(e) => setTkFollowerMin(e.target.value)}
+                    />
+                    <span className='absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground'>fans</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Results Grid */}
+            {tkLoading ? (
+              <div className='flex items-center justify-center py-20 text-muted-foreground'>
+                <Loader2 className='mr-2 h-5 w-5 animate-spin' /> 正在搜索 TikTok 达人市场...
+              </div>
+            ) : tkError ? (
+              <div className='flex flex-col items-center justify-center py-20 text-muted-foreground'>
+                <Globe2 className='mb-3 h-12 w-12 opacity-40' />
+                <p className='font-medium'>搜索失败</p>
+                <p className='text-sm mt-1'>请确保已连接 TikTok Shop 且有 AffiliateSeller 权限</p>
+              </div>
+            ) : creators.length === 0 ? (
+              <div className='flex flex-col items-center justify-center py-20 text-muted-foreground'>
+                <Users className='mb-3 h-12 w-12 opacity-40' />
+                <p className='font-medium'>暂无搜索结果</p>
+                <p className='text-sm mt-1'>尝试调整关键词或筛选条件</p>
+              </div>
+            ) : (
+              <>
+                <p className='text-sm text-muted-foreground'>
+                  找到 <span className='font-semibold text-slate-700'>{creators.length}</span> 位达人
+                  · 数据来源：TikTok Creator Marketplace（近30天）
+                </p>
+
+                <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
+                  {creators.map((creator) => (
+                    <Card key={creator.creatorOpenId} className='transition-all hover:shadow-lg cursor-pointer group border-slate-200/60'
+                      onClick={() => setSelectedCreator(creator)}>
+                      <CardHeader className='pb-3'>
+                        <div className='flex items-start gap-3'>
+                          {creator.avatar?.url ? (
+                            <img src={creator.avatar.url} alt={creator.nickname} className='h-12 w-12 rounded-full object-cover shrink-0 border-2 border-slate-200 group-hover:border-blue-300 transition-colors' loading='lazy' />
+                          ) : (
+                            <div className='h-12 w-12 rounded-full bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center shrink-0'>
+                              <UserCheck className='h-6 w-6 text-violet-400' />
+                            </div>
+                          )}
+                          <div className='min-w-0 flex-1'>
+                            <CardTitle className='text-base leading-tight line-clamp-1'>{creator.nickname || creator.username}</CardTitle>
+                            <p className='text-xs font-mono text-muted-foreground truncate'>@{creator.username}</p>
+                            {creator.selectionRegion && (
+                              <Badge variant='outline' className='mt-1 text-[10px] px-1.5 py-0'>
+                                {{ MY: '🇲🇾', PH: '🇵🇭', SG: '🇸🇬', TH: '🇹🇭', VN: '🇻🇳', ID: '🇮🇩' }[creator.selectionRegion] || ''}{creator.selectionRegion}
+                              </Badge>
+                            )}
+                          </div>
+                          <Eye className='h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0' />
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {/* Key metrics row */}
+                        <div className='grid grid-cols-3 gap-y-2 mb-3 text-center'>
+                          <div className='rounded-lg bg-blue-50/60 p-2'>
+                            <p className='text-[11px] text-blue-600 font-medium'>粉丝</p>
+                            <p className='text-sm font-bold tabular-nums text-blue-700'>{formatFollowers(creator.followerCount)}</p>
+                          </div>
+                          <div className='rounded-lg bg-emerald-50/60 p-2'>
+                            <p className='text-[11px] text-emerald-600 font-medium'>GMV</p>
+                            <p className='text-sm font-bold tabular-nums text-emerald-700'>{creator.gmv?.range?.formatted || `RM${creator.gmv?.amount?.toFixed(0) || '—'}`}</p>
+                          </div>
+                          <div className='rounded-lg bg-orange-50/60 p-2'>
+                            <p className='text-[11px] text-orange-600 font-medium'>均播</p>
+                            <p className='text-sm font-bold tabular-nums text-orange-700'>{formatNumber(creator.avgEcVideoViewCount || 0)}</p>
+                          </div>
+                        </div>
+
+                        {/* Secondary info */}
+                        <div className='flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500'>
+                          <span>视频 <strong className='text-slate-700'>{creator.ecVideoCount || 0}</strong></span>
+                          <span>直播 <strong className='text-slate-700'>{creator.ecLiveCount || 0}</strong></span>
+                          {creator.unitsSoldRange?.formatted && <span>销量 <strong className='text-slate-700'>{creator.unitsSoldRange.formatted}</strong></span>}
+                          {creator.videoGmv?.range?.formatted && <span>视频GMV <strong className='text-slate-700'>{creator.videoGmv.range.formatted}</strong></span>}
+                        </div>
+
+                        <div className='mt-3 pt-2 border-t border-slate-100 text-[10px] text-center text-muted-foreground'>
+                          点击查看完整画像 →
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          {/* ════════ 本地达人列表 (CRUD) ════════ */}
           <TabsContent value='roster'>
             <div className='mb-4'>
               <div className='relative max-w-sm'>
@@ -301,7 +549,7 @@ export function InfluencersPage() {
             </div>
           </TabsContent>
 
-          {/* ── 寄样管理 ── */}
+          {/* ════════ 寄样管理 ════════ */}
           <TabsContent value='samples'>
             <Card>
               <CardContent className='p-0'>
@@ -334,7 +582,7 @@ export function InfluencersPage() {
             </Card>
           </TabsContent>
 
-          {/* ── 带货效果 ── */}
+          {/* ════════ 带货效果 ════════ */}
           <TabsContent value='performance' className='space-y-6'>
             <div className='grid gap-4 lg:grid-cols-2'>
               <Card>
@@ -382,7 +630,7 @@ export function InfluencersPage() {
             </div>
           </TabsContent>
 
-          {/* ── 佣金结算 ── */}
+          {/* ════════ 佣金结算 ════════ */}
           <TabsContent value='settlement'>
             <Card>
               <CardContent className='p-0'>
@@ -415,6 +663,222 @@ export function InfluencersPage() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* ════════ AS-002: Creator Detail Sheet (Performance Portrait) ════════ */}
+        <Sheet open={!!selectedCreator} onOpenChange={(o) => !o && setSelectedCreator(null)}>
+          <SheetContent className='sm:max-w-xl overflow-y-auto'>
+            {selectedCreator && (
+              <>
+                <SheetHeader>
+                  <div className='flex items-center gap-3'>
+                    {selectedCreator.avatar?.url ? (
+                      <img src={selectedCreator.avatar.url} alt={selectedCreator.nickname} className='h-14 w-14 rounded-full object-cover border-2 border-purple-200' />
+                    ) : (
+                      <div className='h-14 w-14 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center'>
+                        <UserCheck className='h-7 w-7 text-white' />
+                      </div>
+                    )}
+                    <div>
+                      <SheetTitle>{selectedCreator.nickname || selectedCreator.username}</SheetTitle>
+                      <SheetDescription className='font-mono text-xs'>@{selectedCreator.username}</SheetDescription>
+                    </div>
+                  </div>
+                </SheetHeader>
+
+                <div className='mt-6 space-y-5'>
+                  {perfLoading && (
+                    <div className='flex items-center gap-2 py-8 text-muted-foreground'>
+                      <Loader2 className='h-4 w-4 animate-spin' /> 加载达人详细画像...
+                    </div>
+                  )}
+
+                  {!perfLoading && creatorPerf && (
+                    <>
+                      {/* Basic Info Card */}
+                      <div className='rounded-xl border border-slate-200/60 p-4 bg-gradient-to-b from-slate-50 to-transparent'>
+                        <h4 className='text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2'>
+                          <UserCheck className='h-4 w-4 text-blue-500' /> 基本信息
+                        </h4>
+                        <div className='grid grid-cols-2 gap-3'>
+                          {[
+                            ['昵称', creatorPerf.nickname],
+                            ['用户名', `@${creatorPerf.username}`],
+                            ['区域', creatorPerf.selectionRegion || '—'],
+                            ['简介', creatorPerf.bioDescription || '—'],
+                            ['粉丝', formatFollowers(creatorPerf.followerCount)],
+                            ['视频数', String(creatorPerf.ecVideoCount)],
+                            ['直播数', String(creatorPerf.ecLiveCount)],
+                            ...(creatorPerf.rating !== 0 ? [['评分', `${creatorPerf.rating.toFixed(1)}/10`]] : []),
+                          ].map(([label, val], i) => (
+                            <div key={i} className={`rounded-lg p-2.5 ${i % 2 === 0 ? 'bg-slate-50' : 'bg-blue-50/30'}`}>
+                              <p className='text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5'>{label}</p>
+                              <p className='text-sm font-medium text-slate-800 line-clamp-1'>{val as string}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {creatorPerf.profileTtUri && (
+                          <a href={`https://www.tiktok.com/${creatorPerf.username}`} target='_blank' rel='noopener noreferrer'
+                            className='inline-flex items-center gap-1 mt-3 text-xs text-blue-600 hover:text-blue-700 transition-colors'>
+                            <ExternalLink className='h-3 w-3' /> 访问 TikTok 主页
+                          </a>
+                        )}
+                      </div>
+
+                      {/* GMV & Revenue Card */}
+                      {(creatorPerf.gmv || creatorPerf.videoGmv || creatorPerf.liveGmv) && (
+                        <div className='rounded-xl border border-emerald-200/60 p-4 bg-gradient-to-b from-emerald-50/50 to-transparent'>
+                          <h4 className='text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2'>
+                            <TrendingUp className='h-4 w-4 text-emerald-500' /> GMV 表现（近30天）
+                          </h4>
+                          <div className='grid grid-cols-2 gap-3'>
+                            {[
+                              ['总 GMV', creatorPerf.gmv?.amount, creatorPerf.gmv?.currency, 'text-emerald-700'],
+                              ['视频 GMV', creatorPerf.videoGmv?.amount, creatorPerf.videoGmv?.currency, 'text-blue-700'],
+                              ['直播 GMV', creatorPerf.liveGmv?.amount, creatorPerf.liveGmv?.currency, 'text-purple-700'],
+                              ['销量', creatorPerf.unitsSold, null, 'text-slate-700'],
+                              ['GPM', creatorPerf.gpm, null, 'text-orange-700'],
+                              ['视频 GPM', creatorPerf.videoGpm, null, 'text-indigo-700'],
+                              ['直播 GPM', creatorPerf.liveGpm, null, 'text-pink-700'],
+                              ['平均客单价', creatorPerf.avgGmvPerBuyer, null, 'text-teal-700'],
+                            ].filter(([, v]) => v !== undefined && v !== 0).map(([label, val, curr, color], i) => (
+                              <div key={i} className='rounded-lg p-2.5 bg-white/60'>
+                                <p className='text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5'>{label}</p>
+                                <p className={`text-sm font-bold tabular-nums ${color}`}>{curr === undefined
+                                  ? formatNumber(val as number)
+                                  : `${curr}${(val as number).toLocaleString()}`
+                                }</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Content Performance Card */}
+                      <div className='rounded-xl border border-blue-200/60 p-4 bg-gradient-to-b from-blue-50/50 to-transparent'>
+                        <h4 className='text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2'>
+                          <Video className='h-4 w-4 text-blue-500' /> 内容表现
+                        </h4>
+                        <div className='grid grid-cols-2 gap-3'>
+                          {[
+                            ['平均播放', formatNumber(creatorPerf.avgEcVideoPlayCount)],
+                            ['平均点赞', formatNumber(creatorPerf.avgEcVideoLikeCount)],
+                            ['平均评论', formatNumber(creatorPerf.avgEcVideoCommentCount)],
+                            ['平均分享', formatNumber(creatorPerf.avgEcVideoShareCount)],
+                            ['视频互动率', `${(creatorPerf.ecVideoEngagementRate * 100).toFixed(1)}%`],
+                            ['直播 UV', formatNumber(creatorPerf.avgEcLiveUv)],
+                            ['直播互动率', `${(creatorPerf.ecLiveEngagementRate * 100).toFixed(1)}%`],
+                            ['合作品牌数', String(creatorPerf.brandCollaborationCount || 0)],
+                          ].map(([label, val], i) => (
+                            <div key={i} className='rounded-lg p-2.5 bg-white/60'>
+                              <p className='text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5'>{label}</p>
+                              <p className='text-sm font-bold tabular-nums text-slate-800'>{val}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Collaboration & Commission Card */}
+                      {(creatorPerf.avgCommissionRate || creatorPerf.promotedProductNum || creatorPerf.pps !== undefined) && (
+                        <div className='rounded-xl border border-purple-200/60 p-4 bg-gradient-to-b from-purple-50/50 to-transparent'>
+                          <h4 className='text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2'>
+                            <ShoppingBag className='h-4 w-4 text-purple-500' /> 合作信息
+                          </h4>
+                          <div className='grid grid-cols-2 gap-3'>
+                            {[
+                              ['平均佣金率', `${creatorPerf.avgCommissionRate?.toFixed(1) || '—'}%`],
+                              ['推广商品数', String(creatorPerf.promotedProductNum || 0)],
+                              ['推广评分 PPS', creatorPerf.pps !== undefined ? creatorPerf.pps.toFixed(1) : '—'],
+                              ['样品发布率', creatorPerf.postRate !== undefined ? `${(creatorPerf.postRate * 100).toFixed(0)}%` : '—'],
+                            ].map(([label, val], i) => (
+                              <div key={i} className='rounded-lg p-2.5 bg-white/60'>
+                                <p className='text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5'>{label}</p>
+                                <p className='text-sm font-bold tabular-nums text-slate-800'>{val}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Follower Demographics */}
+                      {(creatorPerf.followerGender?.length || creatorPerf.followerAge?.length || creatorPerf.followerLocation?.length) && (
+                        <div className='rounded-xl border border-cyan-200/60 p-4 bg-gradient-to-b from-cyan-50/50 to-transparent'>
+                          <h4 className='text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2'>
+                            <Star className='h-4 w-4 text-cyan-500' /> 粉丝画像
+                          </h4>
+                          <div className='space-y-3'>
+                            {creatorPerf.followerGender?.length > 0 && (
+                              <div>
+                                <p className='text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5'>性别分布</p>
+                                <div className='flex gap-2'>
+                                  {creatorPerf.followerGender.map((fg, i) => (
+                                    <div key={i} className='flex-1 rounded-lg bg-white/60 p-2 text-center'>
+                                      <p className='text-xs font-medium text-slate-700'>{fg.gender || '其他'}</p>
+                                      <p className='text-sm font-bold tabular-nums text-cyan-600'>{(fg.percentage * 100).toFixed(0)}%</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {creatorPerf.followerAge?.length > 0 && (
+                              <div>
+                                <p className='text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5'>年龄分布</p>
+                                <div className='flex gap-1 flex-wrap'>
+                                  {creatorPerf.followerAge.slice(0, 5).map((fa, i) => (
+                                    <Badge key={i} variant='outline' className='text-[10px]'>
+                                      {fa.ageRange}: {(fa.percentage * 100).toFixed(0)}%
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {creatorPerf.followerLocation?.length > 0 && (
+                              <div>
+                                <p className='text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5'>地域分布</p>
+                                <div className='flex gap-1 flex-wrap'>
+                                  {creatorPerf.followerLocation.slice(0, 5).map((fl, i) => (
+                                    <Badge key={i} variant='outline' className='text-[10px]'>
+                                      {fl.region}: {(fl.percentage * 100).toFixed(0)}%
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Category Distribution */}
+                      {creatorPerf.categoryGmvDistribution?.length > 0 && (
+                        <div className='rounded-xl border border-amber-200/60 p-4 bg-gradient-to-b from-amber-50/50 to-transparent'>
+                          <h4 className='text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2'>
+                            <ShoppingBag className='h-4 w-4 text-amber-500' /> 类目 GMV 分布
+                          </h4>
+                          <div className='space-y-2'>
+                            {creatorPerf.categoryGmvDistribution.map((cat, i) => (
+                              <div key={i} className='flex items-center justify-between py-1.5 border-b border-amber-100/50 last:border-0'>
+                                <span className='text-sm text-slate-700'>{cat.categoryName || cat.categoryId}</span>
+                                <span className='text-sm font-semibold tabular-nums text-amber-700'>
+                                  RM{cat.gmv.toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {!perfLoading && !creatorPerf && (
+                    <div className='py-8 text-center text-sm text-muted-foreground'>
+                      <p>无法加载达人详情数据</p>
+                      <p className='text-xs mt-1'>可能需要 AffiliateSeller 权限或达人未公开数据</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </SheetContent>
+        </Sheet>
       </Main>
     </>
   )
