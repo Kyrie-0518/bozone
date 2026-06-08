@@ -32,6 +32,3 @@ dist-ssr
 # Vitest artifacts (browser screenshots/attachments)
 **/__screenshots__/
 .vitest-attachments/
-
-# TanStack Router auto-generated
-src/routeTree.gen.ts
