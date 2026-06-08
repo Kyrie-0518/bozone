@@ -120,7 +120,7 @@ export function buildAuthUrl(): { authUrl: string; state: string } {
   }
 
   const state = makeState()
-  const scopes = ['seller.order', 'seller.product', 'seller.shop', 'seller.finance'].join(',')
+  const scopes = ['seller.order', 'seller.product', 'seller.shop', 'seller.finance', 'affiliate_seller'].join(',')
 
   const url = `https://services.tiktokshop.com/open/authorize?service_id=${serviceId}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}`
 
