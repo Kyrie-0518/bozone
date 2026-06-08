@@ -1,8 +1,6 @@
 import { Plus, RefreshCw, Search, Filter } from 'lucide-react'
 
-/**
- * 广告系列管理页面 (Campaign Level)
-}
+/** 广告系列管理页面 (Campaign Level) */
 
 export function AdsCampaignsPage() {
   return (
