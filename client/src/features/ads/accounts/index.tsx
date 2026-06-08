@@ -6,7 +6,6 @@
  *   2. 手动填写：填入 AppID/AppSecret/RefreshToken（备用方案）
  */
 import { useState, useEffect } from 'react'
-import { useSearchParams, useNavigate } from '@tanstack/react-router'
 import {
   KeyRound, Plus, CheckCircle2, XCircle, Clock,
   ExternalLink, RefreshCw, Trash2, ArrowRight,
@@ -28,19 +27,18 @@ interface AdAccount {
 }
 
 export function AdsAccountsPage() {
-  const [searchParams] = useSearchParams()
-  const navigate = { to: '/ads/accounts' as const }
+  // 从 URL 读取授权结果参数
+  const urlParams = new URLSearchParams(window.location.search)
+  const authResult = urlParams.get('auth')
+  const authMessage = urlParams.get('message')
+  const authAccount = urlParams.get('account')
+
   const [accounts, setAccounts] = useState<AdAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [authLoading, setAuthLoading] = useState(false)
   const [showManualForm, setShowManualForm] = useState(false)
   const [testingId, setTestingId] = useState<number | null>(null)
   const [testResult, setTestResult] = useState<Record<string, any>>({})
-
-  // 从 URL 参数读取授权结果
-  const authResult = searchParams.get('auth')
-  const authMessage = searchParams.get('message')
-  const authAccount = searchParams.get('account')
 
   // 清理 URL 参数（避免刷新重复提示）
   useEffect(() => {
