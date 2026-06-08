@@ -92,7 +92,7 @@ export function AdsDashboardPage() {
           <span className="font-semibold text-blue-900">规则引擎快速状态</span>
         </div>
         <div className="grid grid-cols-4 gap-4 mt-4">
-          {['启用规则: 9条', '今日执行: 234次', '成功动作: 18次', '异常: 0次'].map((item, i) => (
+          {['启用规则: 9条', '今日执行: 234次', '成功动作: 18次', '异常: 0次'].map((_item, i) => (
             <div key={i} className="bg-white/70 rounded-lg p-3 border border-blue-100">
               <div className="h-4 w-full bg-blue-200 rounded mb-1.5" />
               <div className="h-3 w-2/3 bg-blue-100 rounded" />
