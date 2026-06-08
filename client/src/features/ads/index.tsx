@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Outlet, useMatch } from '@tanstack/react-router'
+import { Outlet } from '@tanstack/react-router'
 import {
   TrendingUp,
   DollarSign,
@@ -135,7 +135,7 @@ const objectiveConfig: Record<AdObjective, string> = {
 export function AdsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const isSubRoute = useMatch({ from: '/_authenticated/ads', strict: false })?.pathname !== '/ads'
+  const isSubRoute = window.location.pathname !== '/ads'
 
   const totals = mockCampaigns.reduce((acc, c) => ({
     spend: acc.spend + c.spent,
@@ -166,11 +166,11 @@ export function AdsPage() {
         <ProfileDropdown />
       </Header>
 
+
       <Main>
         {/* 子路由时显示子页面内容，否则显示仪表盘 */}
-        {isSubRoute ? (
-          <Outlet />
-        ) : (
+        {isSubRoute ? <Outlet /> : (
+        <>
         <div className='mb-6 flex flex-wrap items-center justify-between gap-4'>
           <div>
             <h1 className='text-2xl font-bold tracking-tight'>广告管理</h1>
@@ -437,6 +437,7 @@ export function AdsPage() {
             </Button>
           </CardContent>
         </Card>
+        </>
         )}
       </Main>
     </>
