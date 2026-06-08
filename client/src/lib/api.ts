@@ -1,6 +1,6 @@
 const BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : 'http://8.138.36.120:3001'
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
+export async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

@@ -9,7 +9,7 @@
  */
 import { useState, useEffect } from 'react'
 import { Megaphone, RefreshCw, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react'
-import { api } from '@/lib/api'
+import { request } from '@/lib/api'
 
 interface SummaryData {
   spend?: number
@@ -95,12 +95,12 @@ export function AdsDashboardPage() {
     try {
       // 并行加载账户列表和仪表盘数据
       const [accRes, dashRes] = await Promise.all([
-        api.get('/api/ads/accounts'),
-        api.get(`/api/ads/dashboard?days=${days}${selectedAccountId ? `&advertiserId=${selectedAccountId}` : ''}`)
+        request<{ success: boolean; data: { accounts: any[] } }>('/api/ads/accounts'),
+        request<{ success: boolean; data: any }>(`/api/ads/dashboard?days=${days}${selectedAccountId ? `&advertiserId=${selectedAccountId}` : ''}`)
       ])
 
-      if (accRes.data.success) {
-        const list = accRes.data.data.accounts || []
+      if (accRes.success) {
+        const list = accRes.data.accounts || []
         setAccounts(list)
         // 自动选中第一个活跃账户
         if (!selectedAccountId && list.length > 0) {
@@ -109,12 +109,12 @@ export function AdsDashboardPage() {
         }
       }
 
-      if (dashRes.data.success) {
-        setSummary(dashRes.data.data.summary || {})
-        setDailyData(dashRes.data.data.dailyData || [])
-        setError(dashRes.data.data.message || '')
+      if (dashRes.success) {
+        setSummary(dashRes.data.summary || {})
+        setDailyData(dashRes.data.dailyData || [])
+        setError(dashRes.data.message || '')
       } else {
-        setError(dashRes.data.error || '加载失败')
+        setError((dashRes as any).error || '加载失败')
       }
     } catch (e: any) {
       setError(e.message || '网络错误')
