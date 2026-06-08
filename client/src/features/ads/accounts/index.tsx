@@ -166,14 +166,14 @@ export function AdsAccountsPage() {
 
       {/* 账户卡片列表 */}
       <div className="space-y-4">
-        {loading ? (
-          Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 animate-pulse">
-              <div className="h-4 w-40 bg-slate-200 rounded mb-4" />
-              <div className="h-3 w-64 bg-slate-100 rounded" />
-            </div>
-          ))
-        )) : accounts.length === 0 ? (
+          {loading ? (
+            Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 animate-pulse">
+                <div className="h-4 w-40 bg-slate-200 rounded mb-4" />
+                <div className="h-3 w-64 bg-slate-100 rounded" />
+              </div>
+            ))
+          ) : accounts.length === 0 ? (
           <div className="bg-white rounded-xl p-12 text-center border border-dashed border-slate-300">
             <KeyRound className="h-12 w-12 text-slate-300 mx-auto mb-3" />
             <p className="text-slate-500 font-medium">暂无广告账户</p>

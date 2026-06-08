@@ -99,7 +99,8 @@ export function AdsProductsPage() {
                   <td colSpan={7} className="px-4 py-6"><div className="h-4 w-56 bg-slate-200 rounded" /></td>
                 </tr>
               ))
-            )) : products.length === 0 ? (
+            ))
+            ) : products.length === 0 ? (
               <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                 暂无商品数据，先去「商品管理」添加商品
               </td></tr>

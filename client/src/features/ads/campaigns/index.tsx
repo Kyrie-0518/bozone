@@ -104,7 +104,8 @@ export function AdsCampaignsPage() {
                   <td colSpan={8} className="px-4 py-6"><div className="h-4 w-40 bg-slate-200 rounded" /></td>
                 </tr>
               ))
-            )) : filtered.length === 0 ? (
+            ))
+            ) : filtered.length === 0 ? (
               <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-400">暂无广告系列</td></tr>
             ) : filtered.map((c, i) => {
               const st = statusConfig[c.operation_status || c.status || ''] || statusConfig.draft
