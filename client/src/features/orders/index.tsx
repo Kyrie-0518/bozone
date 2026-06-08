@@ -164,7 +164,7 @@ export function OrdersPage() {
                 className='h-9 pr-20 bg-white border-slate-200/80 focus:border-blue-400'
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' || e.target.value}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).form?.requestSubmit(); } }}
               />
               <button
                 className='absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 transition-colors'
