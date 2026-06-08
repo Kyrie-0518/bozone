@@ -97,7 +97,7 @@ const mockProducts: AdProduct[] = [
   }
 ]
 
-export default function AdsProductsPage() {
+export function AdsProductsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [sortBy, setSortBy] = useState('roas')

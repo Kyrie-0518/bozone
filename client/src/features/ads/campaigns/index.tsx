@@ -91,7 +91,7 @@ const mockCampaigns: AdCampaign[] = [
   }
 ]
 
-export default function AdsCampaignsPage() {
+export function AdsCampaignsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [objectiveFilter, setObjectiveFilter] = useState('all')
