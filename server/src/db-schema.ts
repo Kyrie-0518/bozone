@@ -220,6 +220,27 @@ export const shipment = mysqlTable('shipment', {
   createdAt: varchar('created_at', { length: 100 }).notNull(),
 })
 
+// ============ TikTok Ads Account (广告API授权) ============
+export const tiktokAdAccount = mysqlTable('tiktok_ad_account', {
+  id: int('id').autoincrement().primaryKey(),
+  userId: varchar('user_id', { length: 36 }),
+  advertiserId: varchar('advertiser_id', { length: 64 }).notNull().unique(),
+  displayName: varchar('display_name', { length: 255 }),
+  appId: varchar('app_id', { length: 64 }).notNull(),
+  appSecret: text('app_secret').notNull(),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token').notNull(),
+  tokenExpiresAt: varchar('token_expires_at', { length: 100 }),
+  region: varchar('region', { length: 10 }).notNull().default('MY'),
+  currency: varchar('currency', { length: 10 }).notNull().default('MYR'),
+  timezone: varchar('timezone', { length: 50 }),
+  status: mysqlEnum('status', ['active', 'expired', 'revoked', 'error']).default('active'),
+  lastSyncedAt: varchar('last_synced_at', { length: 100 }),
+  errorMessage: text('error_message'),
+  createdAt: varchar('created_at', { length: 100 }).notNull(),
+  updatedAt: varchar('updated_at', { length: 100 }).notNull(),
+})
+
 // ============ Ads ============
 export const adCampaign = mysqlTable('ad_campaign', {
   id: int('id').autoincrement().primaryKey(),

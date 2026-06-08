@@ -1,153 +1,239 @@
-import { KeyRound, Plus, ExternalLink } from 'lucide-react'
-
 /**
- * 广告账户中心页面
+ * 广告账户中心 — 授权管理 + 多账户切换
  * 
- * 功能规划:
- * - TikTok Ads API 账户授权管理
- * - Access Token / Refresh Token 状态显示
- * - 手动刷新 Token
- * - 多账户切换（主账户标记）
- * - OAuth 授权向导引导
- * - API 调用配额使用情况
- * - 最后同步时间记录
+ * 功能：
+ * - 显示所有已授权的广告账户（Token状态、最后同步时间）
+ * - 新增授权（填写 AppID/AppSecret/RefreshToken）
+ * - 测试连通性
+ * - 删除/解绑
  */
+import { useState, useEffect } from 'react'
+import { KeyRound, Plus, CheckCircle2, XCircle, Clock, ExternalLink, RefreshCw, Trash2 } from 'lucide-react'
+import { api } from '@/lib/api'
+
+interface AdAccount {
+  id: number
+  advertiser_id: string
+  display_name: string
+  region: string
+  currency: string
+  status: string
+  last_synced_at: string | null
+  token_expires_at: string | null
+  hasToken: boolean
+  tokenStatus: string
+}
 
 export function AdsAccountsPage() {
+  const [accounts, setAccounts] = useState<AdAccount[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [testingId, setTestingId] = useState<number | null>(null)
+  const [testResult, setTestResult] = useState<Record<string, any>>({})
+
+  useEffect(() => { loadAccounts() }, [])
+
+  async function loadAccounts() {
+    setLoading(true)
+    try {
+      const res = await api.get('/api/ads/accounts')
+      if (res.data.success) setAccounts(res.data.data)
+    } catch {}
+    setLoading(false)
+  }
+
+  /** 测试连接 */
+  async function testConnection(id: number) {
+    setTestingId(id)
+    setTestResult({})
+    try {
+      const res = await api.post(`/api/ads/accounts/${id}/test`)
+      setTestResult(res.data)
+      if (res.data.success) loadAccounts() // 刷新状态
+    } catch (e: any) {
+      setTestResult({ success: false, error: e.message })
+    }
+    setTestingId(null)
+  }
+
+  /** 新增授权 */
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const body: Record<string, string> = {}
+    for (const [k, v] of formData.entries()) body[k] = v as string
+
+    try {
+      await api.post('/api/ads/accounts', body)
+      setShowForm(false)
+      loadAccounts()
+      ;(e.target as HTMLFormElement).reset()
+    } catch (e: any) {
+      alert(e.response?.data?.error || '添加失败')
+    }
+  }
+
+  /** 删除账户 */
+  async function handleDelete(id: number) {
+    if (!confirm('确定要解绑此广告账户吗？')) return
+    await api.delete(`/api/ads/accounts/${id}`)
+    loadAccounts()
+  }
+
+  const statusMap: Record<string, { icon: any; color: string; label: string }> = {
+    active: { icon: CheckCircle2, color: 'text-emerald-500', label: '运行中' },
+    expired: { icon: XCircle, color: 'text-red-500', label: '已过期' },
+    error: { icon: XCircle, color: 'text-red-500', label: '异常' },
+    revoked: { icon: XCircle, color: 'text-slate-400', label: '已撤销' },
+  }
+
   return (
     <div className="space-y-6">
-      {/* 页面标题 */}
+      {/* 标题 */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            账户中心
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <KeyRound className="h-6 w-6 text-violet-500" />
+            广告账户中心
           </h2>
-          <p className="text-sm text-slate-500 mt-1">TikTok Business API 授权管理 &amp; 多账户切换</p>
+          <p className="text-sm text-slate-500 mt-1">管理 TikTok Business Platform 广告账户授权</p>
         </div>
-        <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-          <Plus className="h-4 w-4" />
-          授权新账户
+        <button onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium transition-colors"
+        >
+          <Plus className="h-4 w-4" /> 授权新账户
         </button>
       </div>
 
-      {/* 账户列表 */}
+      {/* 授权表单 */}
+      {showForm && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+          <h3 className="text-base font-semibold text-slate-800 mb-4">添加 TikTok 广告账户授权</h3>
+          <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Advertiser ID *</label>
+              <input name="advertiserId" required placeholder="如: ABC123DEF456"
+                className="w-full rounded-lg border-slate-200 bg-slate-50 focus:border-violet-400 focus:ring-violet-200 px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">App ID *</label>
+              <input name="appId" required placeholder="从 TikTok Business Platform 获取"
+                className="w-full rounded-lg border-slate-200 bg-slate-50 focus:border-violet-400 px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">App Secret *</label>
+              <input name="appSecret" type="password" required placeholder="应用密钥"
+                className="w-full rounded-lg border-slate-200 bg-slate-50 focus:border-violet-400 px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Refresh Token *</label>
+              <input name="refreshToken" required placeholder="OAuth 授权获取的刷新令牌"
+                className="w-full rounded-lg border-slate-200 bg-slate-50 focus:border-violet-400 px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">显示名称</label>
+              <input name="displayName" placeholder="如 MY-Shop-001"
+                className="w-full rounded-lg border-slate-200 bg-slate-50 focus:border-violet-400 px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">市场区域</label>
+              <select name="region" defaultValue="MY"
+                className="w-full rounded-lg border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none">
+                <option value="MY">马来西亚 (MY)</option>
+                <option value="US">美国 (US)</option>
+                <option value="UK">英国 (UK)</option>
+                <option value="VN">越南 (VN)</option>
+                <option value="TH">泰国 (TH)</option>
+                <option value="PH">菲律宾 (PH)</option>
+              </select>
+            </div>
+            <div className="col-span-2 flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setShowForm(false)}
+                className="px-4 py-2 text-slate-600 hover:text-slate-800 text-sm">取消</button>
+              <button type="submit"
+                className="px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium">保存并授权</button>
+            </div>
+          </form>
+          <p className="mt-3 text-xs text-slate-400">
+            提示：在 TikTok Business Platform 
+            (<a href="https://business-api.tiktok.com" target="_blank" rel="noopener" className="underline text-violet-500">
+              business-api.tiktok.com <ExternalLink className="inline h-3 w-3" />
+            </a>)
+            创建应用后获取 App ID / Secret 和 Refresh Token。
+          </p>
+        </div>
+      )}
+
+      {/* 账户卡片列表 */}
       <div className="space-y-4">
-        {/* 主账户卡片 */}
-        <div className="bg-white rounded-xl shadow-sm border-2 border-blue-200 p-5 animate-pulse">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                <KeyRound className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="h-5 w-28 bg-slate-200 rounded" />
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">当前使用中</span>
+        {loading ? (
+          Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 animate-pulse">
+              <div className="h-4 w-40 bg-slate-200 rounded mb-4" />
+              <div className="h-3 w-64 bg-slate-100 rounded" />
+            </div>
+          ))
+        )) : accounts.length === 0 ? (
+          <div className="bg-white rounded-xl p-12 text-center border border-dashed border-slate-300">
+            <KeyRound className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-500 font-medium">暂无广告账户</p>
+            <p className="text-sm text-slate-400 mt-1">点击上方"授权新账户"开始配置</p>
+          </div>
+        ) : accounts.map(acc => {
+          const st = statusMap[acc.status] || statusMap.active
+          const StatusIcon = st.icon
+          const isTesting = testingId === acc.id
+
+          return (
+            <div key={acc.id} className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-4">
+                  <div className={`p-2.5 rounded-lg ${acc.status === 'active' ? 'bg-emerald-50' : 'bg-slate-50'}`}>
+                    <StatusIcon className={`h-5 w-5 ${st.color}`} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-800">{acc.display_name || acc.advertiser_id}</h3>
+                    <p className="text-sm text-slate-500 font-mono mt-0.5">Advertiser ID: {acc.advertiser_id}</p>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                      <span>{acc.region} · {acc.currency}</span>
+                      <span>·</span>
+                      <span>{acc.tokenStatus}</span>
+                      {acc.last_synced_at && (
+                        <>
+                          <span>·</span>
+                          <span>同步: {new Date(acc.last_synced_at).toLocaleDateString()}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="h-3.5 w-48 bg-slate-100 rounded mt-1.5" />
-              </div>
-            </div>
-            <div className="flex gap-1.5">
-              <div className="h-8 w-18 bg-slate-100 rounded-lg" />
-              <div className="h-8 w-18 bg-slate-100 rounded-lg" />
-              <div className="h-8 w-14 bg-slate-100 rounded-lg" />
-              <div className="h-8 w-14 bg-slate-100 rounded-lg" />
-            </div>
-          </div>
-          
-          {/* 账户详情网格 */}
-          <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
-            {[
-              'Advertiser ID',
-              '市场 / 货币',
-              'Token状态',
-              '最后同步',
-            ].map((label, i) => (
-              <div key={i}>
-                <div className="text-xs text-slate-400 mb-1">{label}</div>
-                <div className={`h-4 ${i === 2 ? 'w-36' : i === 3 ? 'w-24' : 'w-28'} bg-slate-200 rounded`} />
-              </div>
-            ))}
-          </div>
 
-          {/* 统计数据 */}
-          <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-            {[
-              { label: '管理系列数', val: '4' },
-              { label: '管理素材数', val: '12' },
-              { label: '今日API调用', val: '156' },
-            ].map((stat, i) => (
-              <div key={i} className="bg-slate-50 rounded-lg p-3">
-                <div className="text-xs text-slate-400">{stat.label}</div>
-                <div className="text-lg font-semibold mt-0.5">{stat.val}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 第二个账户 */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 animate-pulse">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                <KeyRound className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
+                {/* 右侧操作区 */}
                 <div className="flex items-center gap-2">
-                  <div className="h-5 w-28 bg-slate-200 rounded" />
-                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">即将过期</span>
+                  <button onClick={() => testConnection(acc.id)} disabled={isTesting}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 text-sm font-medium disabled:opacity-50 transition-all"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isTesting ? 'animate-spin' : ''}`} />
+                    {isTesting ? '测试中...' : '测试连接'}
+                  </button>
+                  <button onClick={() => handleDelete(acc.id)}
+                    className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
-                <div className="h-3.5 w-44 bg-slate-100 rounded mt-1.5" />
               </div>
-            </div>
-            <div className="flex gap-1.5">
-              <div className="h-8 w-18 bg-amber-100 rounded-lg" />
-              <div className="h-8 w-18 bg-slate-100 rounded-lg" />
-              <div className="h-8 w-14 bg-slate-100 rounded-lg" />
-              <div className="h-8 w-14 bg-red-100 rounded-lg" />
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* 授权指南 */}
-      <div className="bg-slate-50 rounded-xl border border-slate-200 p-6 animate-pulse">
-        <div className="h-5 w-32 bg-slate-200 rounded mb-4" />
-        <div className="space-y-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex items-center gap-3">
-              <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-xs text-blue-600 font-medium">{i}</div>
-              <div className="h-4 w-72 bg-slate-200 rounded" />
+              {/* 测试结果 */}
+              {testResult[acc.id] && (
+                <div className={`mt-3 p-3 rounded-lg text-sm ${
+                  testResult[acc.id]?.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                }`}>
+                  {testResult[acc.id]?.message || testResult[acc.id]?.error || JSON.stringify(testResult[acc.id])}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-        <div className="mt-4">
-          <div className="h-9 w-36 bg-blue-100 rounded-lg inline-flex items-center justify-center gap-1.5 text-sm text-blue-700 font-medium">
-            <ExternalLink className="h-4 w-4" /> 打开授权向导
-          </div>
-        </div>
-      </div>
-
-      {/* API 配额使用情况 */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <div className="h-5 w-36 bg-slate-200 rounded mb-4" />
-        <div className="space-y-3">
-          {[
-            { label: '今日调用次数', used: 156, limit: 10000, pct: 1.6 },
-            { label: 'Rate Limit 剩余', used: 85, limit: 100, pct: 15 },
-            { label: 'Token刷新次数', used: 2, limit: 50, pct: 4 },
-          ].map((quota, i) => (
-            <div key={i}>
-              <div className="flex justify-between text-sm mb-1.5">
-                <span className="text-slate-600">{quota.label}</span>
-                <span className="text-slate-400">{quota.used} / {quota.limit}</span>
-              </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: `${quota.pct}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
+          )
+        })}
       </div>
     </div>
   )
