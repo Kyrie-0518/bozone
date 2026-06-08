@@ -266,6 +266,7 @@ export async function initBusinessTables() {
     }
 
     // ── Add new columns to existing tables (safe via INFORMATION_SCHEMA check) ──
+    // ── Product table auto-migration ──
     const [existingCols] = await conn.execute(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'product'`, [process.env.DB_NAME || 'bozone'])
     const colNames = (existingCols as any[]).map((r: any) => r.COLUMN_NAME)
     const altColumns = [
@@ -278,6 +279,19 @@ export async function initBusinessTables() {
       if (!colNames.includes(col.name)) {
         try { await conn.execute(col.ddl) } catch { /* ignore */ }
       }
+    }
+
+    // ── Order Item table auto-migration (O-001: SKU image) ──
+    const [orderItemCols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'order_item'`,
+      [process.env.DB_NAME || 'bozone']
+    )
+    const oiColNames = (orderItemCols as any[]).map((r: any) => r.COLUMN_NAME)
+    if (!oiColNames.includes('image')) {
+      try {
+        await conn.execute(`ALTER TABLE order_item ADD COLUMN image TEXT AFTER product_name`)
+        console.log('[DB] Migrated: order_item.image column added')
+      } catch { /* ignore */ }
     }
 
     console.log('[DB] All business tables ready.')
