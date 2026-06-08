@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Outlet } from '@tanstack/react-router'
 import {
   TrendingUp,
   DollarSign,
@@ -433,6 +434,7 @@ export function AdsPage() {
             </Button>
           </CardContent>
         </Card>
+        <Outlet />
       </Main>
     </>
   )
