@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { db } from '../db.js'
-import { order as orderTable, orderItem } from '../db-schema.js'
+import { order as orderTable, orderItem, tiktokShop } from '../db-schema.js'
 import { eq, like, desc } from 'drizzle-orm'
+import { fetchOrderPriceDetail } from '../services/tiktok-order-sync.js'
 
 const app = new Hono()
 
@@ -52,6 +53,36 @@ app.get('/:id', async (c) => {
   if (!orderRow) return c.json({ success: false, error: 'Not found' }, 404)
   const items = await db.select().from(orderItem).where(eq(orderItem.orderId, id))
   return c.json({ success: true, data: { ...orderRow, items } })
+})
+
+// O-004: Fetch price detail from TikTok API
+app.get('/:id/price-detail', async (c) => {
+  const id = Number(c.req.param('id'))
+  // 1. Get local order
+  const [orderRow] = await db.select().from(orderTable).where(eq(orderTable.id, id)).limit(1)
+  if (!orderRow) return c.json({ success: false, error: 'Order not found' }, 404)
+
+  // 2. Find shop for token/cipher
+  if (!orderRow.shopId) {
+    return c.json({ success: false, error: 'Order has no associated shop' }, 400)
+  }
+  const [shopRow] = await db.select().from(tiktokShop).where(eq(tiktokShop.id, orderRow.shopId)).limit(1)
+  if (!shopRow?.accessToken) {
+    return c.json({ success: false, error: 'Shop token not available' }, 400)
+  }
+
+  // 3. Call TikTok price_detail API
+  const detail = await fetchOrderPriceDetail(
+    orderRow.orderNo,
+    shopRow.accessToken,
+    shopRow.shopCipher,
+  )
+
+  if (!detail) {
+    return c.json({ success: false, error: 'Failed to fetch price detail from TikTok' }, 502)
+  }
+
+  return c.json({ success: true, data: detail })
 })
 
 app.post('/', async (c) => {

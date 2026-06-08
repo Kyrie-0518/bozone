@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Search, Download, RefreshCw, Loader2, PackageOpen,
   ShoppingCart, Truck, AlertCircle, CheckCircle2, Clock,
-  Eye,
+  Eye, Receipt,
 } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
@@ -62,6 +62,14 @@ export function OrdersPage() {
   const syncMutation = useMutation({
     mutationFn: () => api.sync.orders(),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }) },
+  })
+
+  // O-004: Fetch price detail from TikTok when order selected
+  const { data: priceDetail, isLoading: priceLoading } = useQuery({
+    queryKey: ['order-price-detail', selectedOrder?.id],
+    queryFn: () => api.get(`/orders/${selectedOrder.id}/price-detail`).then((r: any) => r.data),
+    enabled: !!selectedOrder,
+    staleTime: 5 * 60_000, // cache 5 min
   })
 
   // ── Computed stats ──
@@ -337,6 +345,96 @@ export function OrdersPage() {
                         </span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* O-004: TikTok Price Detail (from V202407 API) */}
+                  <div className='rounded-xl border border-slate-200/60 p-4 bg-gradient-to-b from-blue-50/50 to-transparent'>
+                    <div className='flex items-center justify-between mb-3'>
+                      <h4 className='text-sm font-semibold text-slate-700 flex items-center gap-2'>
+                        <span className='h-1.5 w-1.5 rounded-full bg-blue-500'></span> 价格明细
+                        <span className='text-[10px] font-normal text-muted-foreground'>TikTok API</span>
+                      </h4>
+                      {priceDetail && (
+                        <span className='text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium'>实时</span>
+                      )}
+                    </div>
+
+                    {priceLoading ? (
+                      <div className='flex items-center gap-2 py-6 text-muted-foreground'>
+                        <Loader2 className='h-4 w-4 animate-spin' /> 正在拉取价格明细...
+                      </div>
+                    ) : priceDetail ? (
+                      <div className='space-y-3 text-sm'>
+                        {/* 商品价格 */}
+                        <div className='space-y-1.5'>
+                          <p className='text-[10px] font-medium uppercase tracking-wider text-muted-foreground'>商品</p>
+                          {[
+                            ['商品原价 (MSRP)', priceDetail.skuListPrice],
+                            ['促销价', priceDetail.skuSalePrice, true],
+                            ['平台折扣', `-${priceDetail.subtotalDeductionPlatform || 0}`],
+                            ['卖家折扣', `-${priceDetail.subtotalDeductionSeller || 0}`],
+                            ['商品税', priceDetail.subtotalTaxAmount],
+                          ].map(([label, val, highlight], i) => (
+                            <div key={i} className={`flex justify-between items-center py-0.5 ${highlight ? 'font-medium text-blue-700' : ''}`}>
+                              <span className='text-slate-500'>{label}</span>
+                              <span className='tabular-nums'>{typeof val === 'number' ? `RM${val.toFixed(2)}` : String(val)}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* 运费 */}
+                        {(priceDetail.shippingSalePrice || priceDetail.shippingFeeDeductionPlatform) && (
+                          <>
+                            <div className='border-t border-slate-150 pt-2 space-y-1.5'>
+                              <p className='text-[10px] font-medium uppercase tracking-wider text-muted-foreground'>运费</p>
+                              {[
+                                ['原始运费', priceDetail.shippingListPrice],
+                                ['实际运费', priceDetail.shippingSalePrice, true],
+                                ['平台运费减免', priceDetail.shippingFeeDeductionPlatform],
+                                ['卖家运费减免', priceDetail.shippingFeeDeductionSeller],
+                              ].filter(([, v]) => v).map(([label, val, highlight], i) => (
+                                <div key={i} className={`flex justify-between py-0.5 ${highlight ? 'font-medium' : ''}`}>
+                                  <span className='text-slate-500'>{label}</span>
+                                  <span className='tabular-nums'>{typeof val === 'number' ? `RM${val.toFixed(2)}` : String(val)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+
+                        {/* 优惠券 & 税费 */}
+                        {(priceDetail.voucherDeductionPlatform || priceDetail.taxAmount) && (
+                          <>
+                            <div className='border-t border-slate-150 pt-2 space-y-1.5'>
+                              <p className='text-[10px] font-medium uppercase tracking-wider text-muted-foreground'>优惠与税费</p>
+                              {[
+                                ...(priceDetail.voucherDeductionPlatform ? [['平台优惠券', `-${priceDetail.voucherDeductionPlatform}`, 'text-red-600'] as const] : []),
+                                ...(priceDetail.voucherDeductionSeller ? [['卖家优惠券', `-${priceDetail.voucherDeductionSeller}`, 'text-red-600'] as const] : []),
+                                ...(priceDetail.taxAmount ? [['税费', priceDetail.taxAmount] as const] : []),
+                              ].map(([label, val, color], i) => (
+                                <div key={i} className={`flex justify-between py-0.5 ${color || ''}`}>
+                                  <span className='text-slate-500'>{label}</span>
+                                  <span className='tabular-nums'>{typeof val === 'number' ? `RM${val.toFixed(2)}` : String(val)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+
+                        {/* 汇总行 */}
+                        <div className='border-t-2 border-t-slate-200 pt-2 mt-1 flex justify-between'>
+                          <span className='font-bold text-slate-800 text-xs'>订单总计 (TikTok)</span>
+                          <span className='font-bold tabular-nums text-sm text-blue-600'>
+                            RM{(priceDetail.skuSalePrice ?? 0 + (priceDetail.shippingSalePrice ?? 0)).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    ) : selectedOrder && !priceLoading ? (
+                      <div className='py-4 text-center text-[12px] text-muted-foreground'>
+                        <Receipt className='mx-auto mb-1 h-5 w-5 opacity-30' />
+                        暂无价格明细（需 TikTok 返回数据）
+                      </div>
+                    ) : null}
                   </div>
 
                   {selectedOrder.remark && (

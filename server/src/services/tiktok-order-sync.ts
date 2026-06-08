@@ -308,3 +308,106 @@ export async function syncAllShops(): Promise<Record<number, { total: number; su
 
   return results
 }
+
+// ── O-004: Fetch order price detail from TikTok API (V202407) ──
+// SDK: orderV202407Api.OrdersOrderIdPriceDetailGet → GET /order/202407/orders/{order_id}/price_detail
+// Returns full price breakdown: discounts, taxes, shipping, vouchers per line item & order level
+export interface PriceDetailData {
+  // Order-level
+  currency?: string
+  total?: number                          // 订单原价 = sku_list_price + shipping_list_price
+  skuListPrice?: number                  // 商品总 MSRP
+  skuSalePrice?: number                  // 商品促销价（扣除折扣后）
+  subtotalDeductionPlatform?: number     // 平台商品折扣
+  subtotalDeductionSeller?: number       // 卖家商品折扣
+  shippingListPrice?: number             // 原始运费
+  shippingSalePrice?: number             // 实际运费（促销后）
+  shippingFeeDeductionPlatform?: number  // 平台运费减免
+  shippingFeeDeductionSeller?: number    // 卖家运费减免
+  voucherDeductionPlatform?: number      // 平台优惠券抵扣
+  voucherDeductionSeller?: number        // 卖家优惠券抵扣
+  subtotalTaxAmount?: number             // 商品税额
+  taxAmount?: number                     // 总税额
+  taxRate?: number                       // 税率
+  netPriceAmount?: number                // 税后价格
+  payment?: { amount?: { value_string: string } } // 买家实付
+  codFee?: number                        // 货到付款手续费
+  // Line items
+  lineItems?: Array<{
+    id: string
+    skuListPrice?: number
+    skuSalePrice?: number
+    skuOriginalPrice?: number
+    quantity?: number
+    subtotalDeductionPlatform?: number
+    subtotalDeductionSeller?: number
+    voucherDeductionPlatform?: number
+    voucherDeductionSeller?: number
+    taxAmount?: number
+    codFeeAmount?: number
+  }>
+}
+
+export async function fetchOrderPriceDetail(
+  orderId: string,
+  token: string,
+  shopCipher: string,
+): Promise<PriceDetailData | null> {
+  try {
+    const result = await apiCall(
+      `/order/202407/orders/${orderId}/price_detail`,
+      token,
+      shopCipher,
+      // GET request, no body needed
+    )
+    const d = result?.data as any
+    if (!d) return null
+
+    // Normalize all numeric fields (TikTok returns amounts as strings or nested objects)
+    const n = (v: any): number => {
+      if (v == null) return 0
+      if (typeof v === 'number') return v
+      if (typeof v === 'string') return parseFloat(v) || 0
+      if (typeof v === 'object' && v.value_string) return parseFloat(v.value_string) || 0
+      if (typeof v === 'object' && v.amount?.value_string) return parseFloat(v.amount.value_string) || 0
+      return 0
+    }
+
+    return {
+      currency: d.currency || 'MYR',
+      total: n(d.total),
+      skuListPrice: n(d.sku_list_price),
+      skuSalePrice: n(d.sku_sale_price),
+      subtotalDeductionPlatform: n(d.subtotal_deduction_platform),
+      subtotalDeductionSeller: n(d.subtotal_deduction_seller),
+      shippingListPrice: n(d.shipping_list_price),
+      shippingSalePrice: n(d.shipping_sale_price),
+      shippingFeeDeductionPlatform: n(d.shipping_fee_deduction_platform),
+      shippingFeeDeductionSeller: n(d.shipping_fee_deduction_seller),
+      voucherDeductionPlatform: n(d.voucher_deduction_platform),
+      voucherDeductionSeller: n(d.voucher_deduction_seller),
+      subtotalTaxAmount: n(d.subtotal_tax_amount),
+      taxAmount: n(d.tax_amount),
+      taxRate: n(d.tax_rate),
+      netPriceAmount: n(d.net_price_amount),
+      payment: d.payment,
+      codFee: n(d.cod_fee),
+      lineItems: (d.line_items || []).map((li: any) => ({
+        id: li.id || '',
+        skuListPrice: n(li.sku_list_price),
+        skuSalePrice: n(li.sku_sale_price),
+        skuOriginalPrice: n(li.sku_original_price),
+        quantity: n(li.quantity),
+        subtotalDeductionPlatform: n(li.subtotal_deduction_platform),
+        subtotalDeductionSeller: n(li.subtotal_deduction_seller),
+        voucherDeductionPlatform: n(li.voucher_deduction_platform),
+        voucherDeductionSeller: n(li.voucher_deduction_seller),
+        taxAmount: n(li.tax_amount),
+        codFeeAmount: n(li.cod_fee_amount),
+      })),
+    }
+  } catch (e: any) {
+    console.error(`[PriceDetail] Failed for order ${orderId}:`, e.message?.slice(0, 200))
+    return null
+  }
+}
