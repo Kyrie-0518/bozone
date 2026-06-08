@@ -1,4 +1,4 @@
-import { BarChart3, Download, Calendar } from 'lucide-react'
+import { Download, Calendar } from 'lucide-react'
 
 /**
  * 数据报表页面

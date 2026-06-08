@@ -1,4 +1,4 @@
-import { Bot, Plus, Brain, Pencil } from 'lucide-react'
+import { Bot, Plus, Brain } from 'lucide-react'
 
 /**
  * 规则引擎管理页面 — ⭐ 核心差异化功能
@@ -48,7 +48,7 @@ export function AdsRulesPage() {
           <div key={i} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 animate-pulse">
             <div className="flex items-center justify-between mb-2">
               <div className="h-4 w-16 bg-slate-200 rounded" />
-              <card.icon className="h-4 w-4 text-slate-300" />
+              {card.icon ? <card.icon className="h-4 w-4 text-slate-300" /> : null}
             </div>
             <div className="h-7 w-12 bg-slate-200 rounded" />
           </div>

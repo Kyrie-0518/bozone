@@ -1,4 +1,4 @@
-import { KeyRound, Plus, CheckCircle2, AlertCircle, Clock, ExternalLink } from 'lucide-react'
+import { KeyRound, Plus, ExternalLink } from 'lucide-react'
 
 /**
  * 广告账户中心页面

@@ -1,4 +1,4 @@
-import { ImagePlus, Plus, Upload, Search, Filter } from 'lucide-react'
+import { ImagePlus, Upload, Search, Filter } from 'lucide-react'
 
 /**
  * 创意素材管理页面 (Creative Level)

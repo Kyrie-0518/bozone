@@ -1,23 +1,7 @@
-import { Layers, Plus, RefreshCw, Search, Filter } from 'lucide-react'
+import { Plus, RefreshCw, Search, Filter } from 'lucide-react'
 
 /**
  * 广告系列管理页面 (Campaign Level)
- * 
- * 功能规划:
- * - Campaign CRUD 操作
- * - 状态筛选（投放中/暂停/草稿/已完成）
- * - 快捷操作：暂停/启动/编辑/删除
- * - 批量绑定规则组
- * - 手动同步TikTok数据
- */
-
-type CampaignStatus = 'active' | 'paused' | 'draft' | 'completed'
-
-const statusConfig: Record<CampaignStatus, { label: string; color: string }> = {
-  active:   { label: '投放中', color: 'bg-emerald-100 text-emerald-700' },
-  paused:   { label: '已暂停', color: 'bg-amber-100 text-amber-700' },
-  draft:    { label: '草稿',   color: 'bg-slate-100 text-slate-600' },
-  completed:{ label: '已完成', color: 'bg-blue-100 text-blue-700' },
 }
 
 export function AdsCampaignsPage() {
