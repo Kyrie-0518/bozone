@@ -9,8 +9,13 @@ import {
   Settings,
   BarChart3,
   Warehouse,
-  TrendingUp,
   ScrollText,
+  // 广告管理图标
+  Megaphone,
+  Layers,
+  ImagePlus,
+  Bot,
+  KeyRound,
 } from 'lucide-react'
 import { type SidebarData } from '../types'
 
@@ -68,8 +73,16 @@ export const sidebarData: SidebarData = {
         },
         {
           title: '广告管理',
-          url: '/ads',
-          icon: TrendingUp,
+          icon: Megaphone,
+          items: [
+            { title: '广告概览', url: '/ads', icon: LayoutDashboard },
+            { title: '广告系列', url: '/ads/campaigns', icon: Layers },
+            { title: '创意素材', url: '/ads/creatives', icon: ImagePlus },
+            { title: '商品推广', url: '/ads/products', icon: Package },
+            { title: '规则引擎', url: '/ads/rules', icon: Bot },
+            { title: '数据报表', url: '/ads/reports', icon: BarChart3 },
+            { title: '账户中心', url: '/ads/accounts', icon: KeyRound },
+          ],
         },
       ],
     },
