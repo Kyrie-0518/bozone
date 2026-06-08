@@ -13,9 +13,14 @@
  *   GET  /api/ads/campaigns        — Campaign 列表
  *   GET  /api/ads/creatives       — 创意素材列表
  *   GET  /api/ads/report          — 自定义报表查询
+ * 
+ * OAuth 一键授权:
+ *   POST /api/ads/auth-url         — 生成 TikTok Business Platform 授权链接
+ *   GET  /api/ads/oauth/callback   — OAuth 回调（TikTok 重定向回来）
  */
 
 import { Hono } from 'hono'
+import crypto from 'node:crypto'
 import { db } from '../db.js'
 import { tiktokAdAccount, adCampaign } from '../db-schema.js'
 import { eq } from 'drizzle-orm'
@@ -28,6 +33,163 @@ import {
 } from '../services/tiktok-ads-api'
 
 const app = new Hono()
+
+// ── Env & Config ──
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5174'
+
+// Ads OAuth 配置（从环境变量读取，与 Shop API 分离）
+function adsAppId(): string {
+  return process.env.TIKTOK_ADS_APP_ID || process.env.TIKTOK_APP_KEY || ''
+}
+function adsAppSecret(): string {
+  return process.env.TIKTOK_ADS_APP_SECRET || process.env.TIKTOK_APP_SECRET || ''
+}
+function adsRedirectUri(): string {
+  return process.env.TIKTOK_ADS_REDIRECT_URI ||
+    `${process.env.FRONTEND_URL || 'http://localhost:5174'}/api/ads/oauth/callback`
+}
+
+// ── CSRF State Store ──
+const oauthStates = new Map<string, number>()
+setInterval(() => {
+  const now = Date.now()
+  for (const [k, t] of oauthStates) if (now - t > 600_000) oauthStates.delete(k)
+}, 120_000)
+
+// ══════════════════════════════════════
+// 🔐 OAuth 一键授权 (ADS-OAUTH)
+// ══════════════════════════════════════
+
+/** 生成 TikTok Business Platform 授权 URL */
+app.post('/auth-url', async (c) => {
+  const appId = adsAppId()
+  const appSecret = adsAppSecret()
+  const redirectUri = adsRedirectUri()
+
+  if (!appId || !appSecret) {
+    return c.json({
+      success: false,
+      error: '未配置 TikTok Ads 凭证，请在 .env 中设置 TIKTOK_ADS_APP_ID 和 TIKTOK_ADS_APP_SECRET',
+      configStatus: { hasAppId: !!appId, hasAppSecret: !!appSecret }
+    }, 500)
+  }
+
+  const state = `${crypto.randomUUID()}.${crypto.randomBytes(6).toString('hex')}`
+  oauthStates.set(state, Date.now())
+
+  // TikTok Business Platform OAuth 授权范围
+  const scopes = [
+    'advertiser_info',      // 获取广告主信息
+    'campaign_management',  // 管理广告系列
+    'reporting',            // 数据报表
+    'dsp_management',      // 投放管理
+  ].join(',')
+
+  // TikTok Marketing API 授权地址
+  const authUrl = `https://business-api.tiktok.com/portal/auth?` +
+    new URLSearchParams({
+      app_id: appId,
+      state,
+      redirect_uri: redirectUri,
+      scope: scopes,
+    })
+
+  console.log(`[Ads OAuth] Generated auth URL, state=${state.slice(0, 8)}...`)
+  return c.json({ success: true, authUrl, state })
+})
+
+/** OAuth 回调 — TikTok 授权后重定向到这里 */
+app.get('/oauth/callback', async (c) => {
+  const code = c.req.query('code')
+  const state = c.req.query('state')
+  const error = c.req.query('error') || c.req.query('error_description')
+  const authCode = c.req.query('auth_code') as string | undefined // TikTok Ads 可能用 auth_code
+
+  if (error) {
+    console.error('[Ads OAuth] Error:', error)
+    return c.redirect(`${FRONTEND_URL}/ads/accounts?auth=error&message=${encodeURIComponent(String(error))}`)
+  }
+
+  const actualCode = code || authCode
+  if (!actualCode || !state) {
+    return c.redirect(`${FRONTEND_URL}/ads/accounts?auth=error&message=${encodeURIComponent('缺少授权码或state参数')}`)
+  }
+
+  if (!oauthStates.has(state)) {
+    return c.redirect(`${FRONTEND_URL}/ads/accounts?auth=error&message=${encodeURIComponent('无效的state参数，可能已过期')}`)
+  }
+  oauthStates.delete(state)
+
+  try {
+    // 用 authorization_code 换取 access_token
+    const tokenRes = await fetch('https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app_id: adsAppId(),
+        app_secret: adsAppSecret(),
+        auth_code: actualCode,
+      }),
+    })
+
+    const tokenData = await tokenRes.json() as any
+    if (tokenData.code !== 0) {
+      throw new Error(tokenData.message || JSON.stringify(tokenData))
+    }
+
+    const d = tokenData.data
+    const accessToken = d.access_token
+    const refreshTokenVal = d.refresh_token
+    const expiresIn = d.expires_in || 86400
+    const advertiserId = String(d.advertiser_id || d.open_advertiser_id || '')
+    
+    if (!advertiserId) {
+      throw new Error('未获取到 Advertiser ID')
+    }
+
+    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString()
+    const now = new Date().toISOString()
+
+    // 查询是否已存在该账户
+    const [existing] = await db.select().from(tiktokAdAccount)
+      .where(eq(tiktokAdAccount.advertiserId, advertiserId))
+
+    if (existing) {
+      // 更新已有账户的 token
+      await db.update(tiktokAdAccount).set({
+        accessToken,
+        refreshToken: refreshTokenVal,
+        tokenExpiresAt: expiresAt,
+        status: 'active',
+        errorMessage: null,
+        updatedAt: now,
+      }).where(eq(tiktokAdAccount.id, existing.id))
+    } else {
+      // 新增账户
+      await db.insert(tiktokAdAccount).values({
+        advertiserId,
+        displayName: `广告账户 ${advertiserId.slice(-8)}`,
+        appId: adsAppId(),
+        appSecret: adsAppSecret(),
+        accessToken,
+        refreshToken: refreshTokenVal,
+        tokenExpiresAt: expiresAt,
+        status: 'active',
+        region: 'MY',
+        currency: 'MYR',
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+
+    console.log(`[Ads OAuth] Authorized successfully: advertiser=${advertiserId}`)
+    return c.redirect(`${FRONTEND_URL}/ads/accounts?auth=success&account=${encodeURIComponent(advertiserId)}`)
+
+  } catch (e: any) {
+    console.error('[Ads OAuth] Callback error:', e.message)
+    return c.redirect(`${FRONTEND_URL}/ads/accounts?auth=error&message=${encodeURIComponent(e.message)}`)
+  }
+})
 
 // ══════════════════════════════════════
 // 📦 广告账户管理 (ADS-004)
