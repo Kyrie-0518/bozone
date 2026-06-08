@@ -214,10 +214,14 @@ export function OrdersPage() {
                     const item = (o.items && o.items.length > 0) ? o.items[0] : null
                     return (
                       <tr key={o.id} className='group border-b border-slate-100/50 transition-colors hover:bg-blue-50/30'>
-                        {/* Product info: icon + name + quantity */}
+                        {/* Product info: image + name + quantity */}
                         <td className='px-4 py-3 min-w-[220px]'>
                           <div className='flex items-start gap-2.5'>
-                            <div className='h-10 w-10 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 shrink-0 flex items-center justify-center text-lg'>📦</div>
+                            {item?.image ? (
+                              <img src={item.image} alt={item.productName || ''} className='h-10 w-10 rounded-lg object-cover shrink-0 border border-slate-200' loading='lazy' />
+                            ) : (
+                              <div className='h-10 w-10 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 shrink-0 flex items-center justify-center text-lg'>📦</div>
+                            )}
                             <div className='min-w-0 flex-1'>
                               <p className='text-xs font-medium text-slate-700 line-clamp-2 leading-snug'>{item?.productName || '—'}</p>
                               <span className='inline-flex items-center gap-0.5 mt-0.5 text-[10px] text-muted-foreground'>
@@ -339,6 +343,34 @@ export function OrdersPage() {
                     <div className='rounded-lg border border-amber-200/60 bg-amber-50/30 p-3 text-sm'>
                       <span className='text-amber-700 font-medium'>备注：</span>
                       <span className='text-slate-700 ml-1'>{selectedOrder.remark}</span>
+                    </div>
+                  )}
+
+                  {/* O-003: Order Items with Images */}
+                  {(selectedOrder.items && selectedOrder.items.length > 0) && (
+                    <div className='rounded-xl border border-slate-200/60 p-4'>
+                      <h4 className='text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2'>
+                        <span className='h-1.5 w-1.5 rounded-full bg-blue-500'></span> 商品明细 ({selectedOrder.items.length})
+                      </h4>
+                      <div className='space-y-2.5'>
+                        {selectedOrder.items.map((item: any, idx: number) => (
+                          <div key={item?.id || idx} className='flex items-center gap-3 rounded-lg p-2.5 bg-slate-50/60 hover:bg-blue-50/40 transition-colors'>
+                            {item.image ? (
+                              <img src={item.image} alt={item.productName || ''} className='h-12 w-12 rounded-lg object-cover shrink-0 border border-slate-200' />
+                            ) : (
+                              <div className='h-12 w-12 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 shrink-0 flex items-center justify-center text-xl'>📦</div>
+                            )}
+                            <div className='min-w-0 flex-1'>
+                              <p className='text-xs font-medium text-slate-800 line-clamp-1'>{item.productName || '—'}</p>
+                              <p className='text-[11px] text-muted-foreground mt-0.5'>{item.sku || '—'} · ×{item.quantity ?? 1}</p>
+                            </div>
+                            <div className='text-right shrink-0'>
+                              <p className='text-sm font-semibold text-slate-800 tabular-nums'>RM{Number(item.unitPrice || 0).toFixed(2)}</p>
+                              <p className='text-[10px] text-muted-foreground tabular-nums'>小计 RM{(Number(item.subtotal || 0)).toFixed(2)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

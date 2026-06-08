@@ -128,6 +128,7 @@ export const orderItem = mysqlTable('order_item', {
   productId: int('product_id').references(() => product.id, { onDelete: 'set null' }),
   sku: varchar('sku', { length: 255 }).default(''),
   productName: varchar('product_name', { length: 500 }).default(''),
+  image: text('image'), // TikTok SDK skuImage (商品主图 URL)
   quantity: int('quantity').default(1),
   unitPrice: float('unit_price').default(0),
   subtotal: float('subtotal').default(0),

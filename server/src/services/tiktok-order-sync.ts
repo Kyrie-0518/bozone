@@ -27,6 +27,15 @@ interface TKOrderBrief {
     price?: {
       amount?: { currency: string; value_string: string }
     }
+    // ★ O-001 新增字段 (TikTok SDK 完整字段)
+    sku_image?: string          // SKU 商品主图 URL
+    original_price?: { amount?: { value_string: string } }   // 原价（未打折）
+    display_status?: string     // 行项目显示状态
+    tracking_number?: string    // 运单号
+    package_id?: string         // 包裹 ID
+    package_status?: string     // 包裹状态
+    cancel_reason?: string
+    is_gift?: boolean
   }>
   recipientAddress?: {
     name?: string
@@ -197,6 +206,7 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
               productId: pId as any,
               sku: line.seller_sku || line.sku_id || '',
               productName: line.product_name || line.sku_name || '',
+              image: line.sku_image || '', // O-001: 存储 SKU 商品图 URL
               quantity: line.quantity || 1,
               unitPrice: itemPrice,
               subtotal: itemPrice * (line.quantity || 1),
@@ -226,6 +236,7 @@ export async function syncShopOrders(shopRow: typeof tiktokShop.$inferSelect): P
               productId: pId as any,
               sku: line.seller_sku || line.sku_id || '',
               productName: line.product_name || line.sku_name || '',
+              image: line.sku_image || '', // O-001: 存储 SKU 商品图 URL
               quantity: line.quantity || 1,
               unitPrice: itemPrice,
               subtotal: itemPrice * (line.quantity || 1),

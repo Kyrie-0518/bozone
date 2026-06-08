@@ -83,6 +83,7 @@ app.post('/', async (c) => {
         productId: i.productId || null,
         sku: i.sku || '',
         productName: i.productName || '',
+        image: i.image || '', // O-001: SKU 商品图
         quantity: i.quantity || 1,
         unitPrice: i.unitPrice || 0,
         subtotal: i.subtotal || 0,
