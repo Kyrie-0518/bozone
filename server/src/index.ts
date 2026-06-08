@@ -29,7 +29,7 @@ const app = new Hono()
 app.use('*', cors({
   origin: (origin) => {
     // Allow no-origin (server-to-server) or listed origins
-    const allowed = ['http://localhost:5174', 'http://localhost:5173', 'http://8.138.36.120', 'http://127.0.0.1:5174']
+    const allowed = ['http://localhost:5174', 'http://localhost:5173', 'http://8.138.36.120', 'http://127.0.0.1:5174', 'https://8.138.36.120']
     return !origin || allowed.includes(origin) ? (origin || 'http://8.138.36.120') : null
   },
   credentials: true,
