@@ -137,33 +137,41 @@ app.get('*', async (c) => {
 })
 
 // ── Auto-migration: add password column to user table (BetterAuth → JWT migration) ──
-try {
+// Uses raw mysql2 connection with explicit DB name — most reliable approach
+{
   const mysql = await import('mysql2/promise')
-  const conn = await mysql.createConnection({
-    host: process.env.DB_HOST || 'localhost',
-    port: Number(process.env.DB_PORT) || 3306,
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'bozone',
-  })
+  const dbName = process.env.DB_NAME || 'bozone'
+  console.log(`[Migrate] Checking user table in database '${dbName}'...`)
   
-  // Check if password column exists (MySQL compatible approach)
-  const [rows] = await conn.execute(
-    "SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user' AND COLUMN_NAME = 'password'"
-  )
-  const exists = (rows as any[])[0]?.cnt > 0
-  
-  if (!exists) {
-    // Use actual DB column name (Drizzle maps lastLogin -> last_login in MySQL)
-    await conn.execute(`ALTER TABLE \`user\` ADD COLUMN \`password\` TEXT NULL`)
-    console.log('[Migrate] user.password column ADDED.')
-  } else {
-    console.log('[Migrate] user.password already exists.')
+  try {
+    const conn = await mysql.createConnection({
+      host: process.env.DB_HOST || 'localhost',
+      port: Number(process.env.DB_PORT) || 3306,
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+    })
+    
+    // Explicitly check with hardcoded DB name (no reliance on DATABASE())
+    const [rows] = await conn.execute(
+      "SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'user' AND COLUMN_NAME = 'password'",
+      [dbName]
+    )
+    
+    const count = Number((rows as any[])[0]?.cnt || 0)
+    console.log(`[Migrate] password column exists=${count}`)
+    
+    if (count === 0) {
+      await conn.execute(`ALTER TABLE \`${dbName}\`.\`user\` ADD COLUMN \`password\` TEXT NULL`)
+      console.log('[Migrate] ✅ user.password column ADDED.')
+    } else {
+      console.log('[Migrate] ✅ user.password already exists.')
+    }
+    
+    await conn.end()
+  } catch (e: any) {
+    console.error(`[Migrate] ❌ FAILED: ${e.message}`)
+    process.exit(1)
   }
-  
-  await conn.end()
-} catch (e: any) {
-  console.error('[Migrate] Error:', e.message)
 }
 
 // ── Init DB & Start ──
