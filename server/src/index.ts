@@ -34,7 +34,8 @@ const port = 3001
 
 // ── Static file serving (SPA: serve client/dist) ──
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const DIST_DIR = join(__dirname, '../client/dist')
+// __dirname = server/src/, go up to project root then into client/dist
+const DIST_DIR = join(__dirname, '../../client/dist')
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
