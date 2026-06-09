@@ -114,7 +114,9 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24,
   },
   rateLimit: {
-    window: 60,        // 60 seconds window (default was 15s)
-    max: 100,          // allow 100 requests per window (default was 5)
+    window: 60,
+    max: 100,
+    // Trust proxy headers so IP detection works behind reverse proxies
+    trustProxy: true,
   },
 })
