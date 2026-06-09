@@ -92,7 +92,11 @@ app.route('/api/auth/jwt', jwtAuthRoutes)
 app.use('/api/*', auditLogger())
 
 // ── Business Routes (with RBAC) ──
-app.use('/api/tiktok/*', requireRole('manager'))
+// TikTok OAuth callback must be PUBLIC (TikTok redirects here without JWT token)
+app.use('/api/tiktok/*', async (c, next) => {
+  if (c.req.path.includes('/callback')) return next() // skip auth for callback
+  return requireRole('manager')(c, next)
+})
 app.route('/api/tiktok', tiktokShopsRoutes)
 
 app.use('/api/products/*', requireRole('manager'))

@@ -108,8 +108,11 @@ export function buildAuthUrl(): { authUrl: string; state: string } {
   const appKey = env('TIKTOK_APP_KEY')
   const appSecret = env('TIKTOK_APP_SECRET')
   const redirectUri = env('TIKTOK_REDIRECT_URI')
-  // service_id (授权ID) is DIFFERENT from app_key (应用密钥)!
-  // From Partner Center: 授权ID=764444..., 应用密钥=6k44pdou0umit
+
+  // ⚠️ service_id (授权ID) 与 app_key (应用密钥) 是两个不同的值！
+  //    多数情况下两者相同，但某些应用类型下不同。
+  //    如果遇到 "This service does not exist" 错误，需在 .env 中单独配置 TIKTOK_SERVICE_ID。
+  //    获取方式: Partner Center → 应用详情 → 授权ID (Service ID)
   const serviceId = env('TIKTOK_SERVICE_ID', appKey)
 
   if (!appKey || !appSecret || !redirectUri) {
@@ -119,12 +122,20 @@ export function buildAuthUrl(): { authUrl: string; state: string } {
     )
   }
 
+  // ⚠️ 关键警告：如果 serviceId === appKey 但仍然报错，说明你的应用需要独立的 Service ID
+  const usingFallback = !process.env['TIKTOK_SERVICE_ID'] && serviceId === appKey
+  if (usingFallback) {
+    console.warn(`[TikTok] ⚠️ WARNING: Using APP_KEY as service_id fallback!`)
+    console.warn(`[TikTok] ⚠️ If you get "This service does not exist", add TIKTOK_SERVICE_ID to .env`)
+    console.warn(`[TikTok] ⚠️ Get it from: Partner Center → App Details → Service ID`)
+  }
+
   const state = makeState()
   const scopes = ['seller.order', 'seller.product', 'seller.shop', 'seller.finance', 'affiliate_seller'].join(',')
 
   const url = `https://services.tiktokshop.com/open/authorize?service_id=${serviceId}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}`
 
-  console.log(`[TikTok] Auth URL: service_id=${serviceId.slice(0, 8)}... (APP_KEY=${appKey.slice(0,8)}...) redirect=${redirectUri.slice(0, 40)}...`)
+  console.log(`[TikTok] Auth URL built: service_id=${serviceId.slice(0, 8)}... app_key=${appKey.slice(0,8)}... same?${serviceId === appKey}`)
   return { authUrl: url, state }
 }
 
