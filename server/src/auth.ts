@@ -90,6 +90,7 @@ export const auth = betterAuth({
   trustedOrigins: [
     'http://localhost:5174', 'http://localhost:5173',
     'http://8.138.36.120', 'https://8.138.36.120',
+    'http://8.138.36.120:3001',
   ],
   secret: 'bozone-dev-secret-change-in-production',
   database: drizzleAdapter(db, { provider: 'mysql', schema }),
