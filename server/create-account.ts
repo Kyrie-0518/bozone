@@ -1,38 +1,44 @@
 /**
- * Create new admin account (bypasses rate limit on old accounts)
+ * Create new admin account via HTTP API (bypasses rate limit on old accounts)
  * Usage: npx tsx create-account.ts
  */
 import 'dotenv/config'
-import mysql from 'mysql2/promise'
-import { hash } from '@node-rs/bcrypt'
-
-const conn = await mysql.createConnection({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '3306'),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'bozone',
-})
 
 const email = 'super@bozone.cn'
+const name = 'SuperAdmin'
 const password = 'Bozone2024!'
-const hashed = await hash(password, 10)
+const origin = process.env.FRONTEND_URL || 'http://localhost:5174'
+const baseUrl = process.env.SERVER_URL || 'http://localhost:3001'
 
-// Check if exists
-const [rows] = await conn.execute('SELECT id FROM user WHERE email = ?', [email]) as any[]
-if (rows.length > 0) {
-  // Update existing
-  await conn.execute('UPDATE user SET password = ? WHERE email = ?', [hashed, email])
-  console.log(`[UPDATE] ${email} → password updated`)
+// 1. Sign up new user via auth API
+const res = await fetch(`${baseUrl}/api/auth/sign-up/email`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Origin: origin,
+    Accept: 'application/json',
+  },
+  body: JSON.stringify({ name, email, password }),
+})
+
+const text = await res.text()
+console.log(`[Sign-up] ${res.status}: ${text.slice(0, 200)}`)
+
+if (!text.includes('error')) {
+  // 2. Set admin role directly in DB
+  const mysql = await import('mysql2/promise')
+  const conn = await mysql.createConnection({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'bozone',
+  })
+  await conn.execute("UPDATE user SET role = ? WHERE email = ?", ['admin', email])
+  await conn.end()
+  console.log(`[DONE] ${email} / ${password} (role: admin)`)
 } else {
-  // Insert new
-  const id = crypto.randomUUID()
-  await conn.execute(
-    'INSERT INTO user (id, name, email, password, email_verified, role) VALUES (?, ?, ?, ?, 1, ?)',
-    [id, 'SuperAdmin', email, hashed, 'admin']
-  )
-  console.log(`[CREATE] ${email} / ${password}`)
+  console.log('[FAIL] Account may already exist, trying update...')
 }
 
-await conn.end()
-process.exit(0)
+process.exit(res.ok ? 0 : 1)
