@@ -1,10 +1,8 @@
 /**
- * Role-Based Access Control Middleware — JWT-based (no cookies, no sessions)
+ * Role-Based Access Control Middleware — JWT-based (raw SQL version)
  */
 import type { Context, Next } from 'hono'
-import { db } from '../db.js'
-import { user } from '../db-schema.js'
-import { eq } from 'drizzle-orm'
+import mysql from 'mysql2/promise'
 import { extractToken, verifyToken, type JWTPayload } from '../auth-jwt.js'
 
 // Role hierarchy: higher index = more permissions
@@ -17,7 +15,7 @@ const ROLE_HIERARCHY: Record<string, number> = {
 
 export type Role = 'admin' | 'manager' | 'finance' | 'operator'
 
-// ── Get user from JWT token ──
+// ── Get user from JWT token (raw SQL — no Drizzle dependency on user table) ──
 async function getCurrentUser(c: Context): Promise<JWTPayload | null> {
   const token = extractToken(c.req.header('Authorization'))
   if (!token) return null
@@ -27,17 +25,27 @@ async function getCurrentUser(c: Context): Promise<JWTPayload | null> {
 
   // Refresh role from DB in case it was changed
   try {
-    const rows = await db
-      .select({ role: user.role, name: user.name, email: user.email })
-      .from(user)
-      .where(eq(user.id, payload.userId))
-      .limit(1)
-    const u = rows[0]
-    if (!u) return null
-    return {
-      ...payload,
-      name: u.name || payload.email,
-      role: (u.role as string) || 'operator',
+    const conn = await mysql.createConnection({
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '3306'),
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+      database: process.env.DB_NAME || 'bozone',
+    })
+    try {
+      const [rows] = await conn.execute(
+        'SELECT role, name, email FROM `user` WHERE id = ? LIMIT 1',
+        [payload.userId]
+      )
+      const u = (rows as any[])[0]
+      if (!u) return payload
+      return {
+        ...payload,
+        name: u.name || payload.email,
+        role: (u.role as string) || 'operator',
+      }
+    } finally {
+      await conn.end()
     }
   } catch {
     return payload

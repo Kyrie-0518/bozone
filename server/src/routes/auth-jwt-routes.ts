@@ -7,7 +7,7 @@
  */
 import { Hono } from 'hono'
 import mysql from 'mysql2/promise'
-import { hashPassword, signToken, extractToken, verifyToken } from '../auth-jwt.js'
+import { hashPassword, signToken, extractToken, verifyToken, verifyPassword } from '../auth-jwt.js'
 
 const app = new Hono()
 
