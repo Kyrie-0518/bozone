@@ -20,6 +20,8 @@ export const user = mysqlTable('user', {
   disableResetPassword: boolean('disable_reset_password'),
   provider: varchar('provider', { length: 50 }),
   lastLogin: varchar('last_login', { length: 100 }),
+  // JWT auth: scrypt hashed password (format: salt:key)
+  password: text('password'),
 })
 
 export const session = mysqlTable('session', {

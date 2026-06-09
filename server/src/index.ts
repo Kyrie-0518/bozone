@@ -136,6 +136,23 @@ app.get('*', async (c) => {
   return serveSPA()
 })
 
+// ── Auto-migration: add password column to user table (BetterAuth → JWT migration) ──
+try {
+  const mysql = await import('mysql2/promise')
+  const conn = await mysql.createConnection({
+    host: process.env.DB_HOST || 'localhost',
+    port: Number(process.env.DB_PORT) || 3306,
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'bozone',
+  })
+  await conn.execute(`ALTER TABLE \`user\` ADD COLUMN IF NOT EXISTS \`password\` TEXT NULL`)
+  console.log('[Migrate] user.password column ready.')
+  await conn.end()
+} catch (e: any) {
+  console.warn('[Migrate] Could not auto-add password column:', e.message)
+}
+
 // ── Init DB & Start ──
 await initBusinessTables()
 
@@ -195,11 +212,8 @@ serve({ fetch: app.fetch, port }, async () => {
   seed().catch(console.error)
 })
 
-// ── Seed (JWT version: direct DB insert with hashed passwords) ──
+// ── Seed (JWT version: ensure accounts have scrypt-hashed passwords) ──
 async function seed() {
-  const existing = await db.select().from(schema.setting).where(eq(schema.setting.key, 'seeded'))
-  if (existing.length > 0) { console.log('[Seed] Skipped.'); return }
-
   const accounts = [
     { name: '管理员', email: 'admin@bozone.cn', password: 'admin123', role: 'admin' },
     { name: 'Kyrie', email: 'kyrie@bozone.cn', password: 'kyrie123', role: 'admin' },
@@ -207,33 +221,36 @@ async function seed() {
     { name: '超级账号', email: 'super@bozone.cn', password: 'Bozone2024!', role: 'admin' },
   ]
 
-  console.log('[Seed] Creating accounts with scrypt passwords...')
+  console.log('[Seed] Ensuring accounts with JWT passwords...')
   for (const acc of accounts) {
     try {
-      const id = crypto.randomUUID()
-      const now = new Date().toISOString()
+      const existing = await db.select({ id: userTable.id, pw: userTable.password }).from(userTable).where(eq(userTable.email, acc.email)).limit(1)
       const hashedPw = await hashPassword(acc.password)
-      
-      await db.insert(userTable).values({
-        id,
-        name: acc.name,
-        email: acc.email,
-        password: hashedPw,
-        role: acc.role,
-        createdAt: now,
-        updatedAt: now,
-        emailVerified: 1,
-      })
-      console.log(`  ✅ ${acc.email} (${acc.role})`)
-    } catch (e: any) {
-      if (e.message?.includes('Duplicate')) {
-        console.log(`  ⏭️  ${acc.email} already exists`)
+      const now = new Date().toISOString()
+
+      if (existing.length > 0) {
+        // Update existing user — always set fresh password (handles BetterAuth migration)
+        await db.update(userTable).set({
+          name: acc.name,
+          password: hashedPw,
+          role: acc.role,
+          updatedAt: now,
+        }).where(eq(userTable.id, existing[0].id))
+        console.log(`  ✏️  ${acc.email} updated with JWT password`)
       } else {
-        console.error(`  ❌ ${acc.email} → ${e.message}`)
+        // Insert new user
+        const id = crypto.randomUUID()
+        await db.insert(userTable).values({
+          id, name: acc.name, email: acc.email,
+          password: hashedPw, role: acc.role,
+          createdAt: now, updatedAt: now, emailVerified: 1,
+        })
+        console.log(`  ✅ ${acc.email} created (${acc.role})`)
       }
+    } catch (e: any) {
+      console.error(`  ❌ ${acc.email} → ${e.message}`)
     }
   }
 
-  await db.insert(schema.setting).values({ key: 'seeded', value: '1' })
   console.log('[Seed] Done. Use super@bozone.cn / Bozone2024! to login.')
 }
