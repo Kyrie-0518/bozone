@@ -2,16 +2,17 @@ import 'dotenv/config'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { extname, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { auth, initAuth } from './auth.js'
 import { initBusinessTables, db } from './db.js'
-import { user } from './db-schema.js'
+import { user as userTable } from './db-schema.js'
 import { eq } from 'drizzle-orm'
 import { auditLogger } from './middleware/audit-logger.js'
 import { requireRole } from './middleware/rbac.js'
+import { hashPassword } from './auth-jwt.js'
 import cron from 'node-cron'
+import * as schema from './db-schema.js'
 import tiktokShopsRoutes from './routes/tiktok-shops.js'
 import productsRoutes from './routes/products.js'
 import ordersRoutes from './routes/orders.js'
@@ -24,27 +25,69 @@ import dashboardRoutes from './routes/dashboard.js'
 import auditLogsRoutes from './routes/audit-logs.js'
 import settingsRoutes from './routes/settings-api.js'
 import syncRoutes from './routes/sync.js'
+import jwtAuthRoutes from './routes/auth-jwt-routes.js'
 import { syncAllShops } from './services/tiktok-order-sync.js'
 import { syncAllProducts } from './services/tiktok-product-sync.js'
 
 const app = new Hono()
+const port = 3001
 
+// ── Static file serving (SPA: serve client/dist) ──
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const DIST_DIR = join(__dirname, '../client/dist')
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+}
+
+async function serveStatic(pathname: string): Promise<Response | null> {
+  if (pathname.includes('..')) return null
+  let filePath = join(DIST_DIR, pathname)
+  try {
+    const s = await stat(filePath)
+    if (s.isDirectory()) filePath = join(filePath, 'index.html')
+    const ext = extname(filePath)
+    const body = await readFile(filePath)
+    return new Response(body, {
+      headers: { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' },
+    })
+  } catch {
+    return null
+  }
+}
+
+async function serveSPA(): Promise<Response> {
+  try {
+    const body = await readFile(join(DIST_DIR, 'index.html'))
+    return new Response(body, { headers: { 'Content-Type': MIME_TYPES['.html'] } })
+  } catch {
+    return new Response('Frontend not built. Run: cd client && npm run build', { status: 503 })
+  }
+}
+
+// ── CORS (allow all origins in production since we serve static files too) ──
 app.use('*', cors({
-  origin: (origin) => {
-    // Allow no-origin (server-to-server) or listed origins
-    const allowed = ['http://localhost:5174', 'http://localhost:5173', 'http://8.138.36.120', 'http://127.0.0.1:5174', 'https://8.138.36.120']
-    return !origin || allowed.includes(origin) ? (origin || 'http://8.138.36.120') : null
-  },
+  origin: (_origin) => '*',
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
   maxAge: 86400,
 }))
 
-// ── Auth (before audit logger to avoid logging auth requests) ──
-app.all('/api/auth/*', (c) => auth.handler(c.req.raw))
+// ── JWT Auth Routes (public — no RBAC needed for login/register) ──
+app.route('/api/auth/jwt', jwtAuthRoutes)
 
-// ── Audit Logger (auto-log all /api/* requests) ──
+// ── Audit Logger (auto-log all /api/* except auth) ──
 app.use('/api/*', auditLogger())
 
 // ── Business Routes (with RBAC) ──
@@ -87,65 +130,17 @@ app.route('/api/sync', syncRoutes)
 // ── Static file serving (catch-all after all /api routes) ──
 app.get('*', async (c) => {
   const pathname = c.req.path
-  // Try serving static file first
   const staticRes = await serveStatic(pathname)
   if (staticRes) return staticRes
-  // SPA fallback for client-side routing
   return serveSPA()
 })
 
-const port = 3001
-
-// ── Static file serving (SPA: serve client/dist) ──
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const DIST_DIR = join(__dirname, '../client/dist')
-
-const MIME_TYPES: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.woff': 'font/woff',
-  '.ttf': 'font/ttf',
-}
-
-async function serveStatic(pathname: string): Promise<Response | null> {
-  // Security: block path traversal
-  if (pathname.includes('..')) return null
-  let filePath = join(DIST_DIR, pathname)
-  try {
-    const s = await stat(filePath)
-    if (s.isDirectory()) filePath = join(filePath, 'index.html')
-    const ext = extname(filePath)
-    const body = await readFile(filePath)
-    return new Response(body, {
-      headers: { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' },
-    })
-  } catch {
-    return null
-  }
-}
-
-// SPA fallback: for non-API routes that don't match a file, serve index.html
-async function serveSPA(): Promise<Response> {
-  try {
-    const body = await readFile(join(DIST_DIR, 'index.html'))
-    return new Response(body, { headers: { 'Content-Type': MIME_TYPES['.html'] } })
-  } catch {
-    return new Response('Frontend not built. Run: cd client && npm run build', { status: 503 })
-  }
-}
-
-await initAuth()
+// ── Init DB & Start ──
 await initBusinessTables()
 
 serve({ fetch: app.fetch, port }, async () => {
   console.log(`[Bozone] Server ready at http://localhost:${port}`)
+  console.log(`[Bozone] Auth mode: JWT (localStorage)`)
 
   // ── Cron: auto-sync orders every 10 minutes ──
   cron.schedule('*/10 * * * *', async () => {
@@ -195,15 +190,12 @@ serve({ fetch: app.fetch, port }, async () => {
 
   console.log('[Cron] Scheduled: orders */10min, products */2h, token-refresh 3AM')
 
+  // ── Seed accounts with scrypt-hashed passwords ──
   seed().catch(console.error)
 })
 
-// ── Seed ──
-import * as schema from './db-schema.js'
-import { mysqlTable } from 'drizzle-orm/mysql-core'
-
+// ── Seed (JWT version: direct DB insert with hashed passwords) ──
 async function seed() {
-  // Check if already seeded
   const existing = await db.select().from(schema.setting).where(eq(schema.setting.key, 'seeded'))
   if (existing.length > 0) { console.log('[Seed] Skipped.'); return }
 
@@ -211,30 +203,36 @@ async function seed() {
     { name: '管理员', email: 'admin@bozone.cn', password: 'admin123', role: 'admin' },
     { name: 'Kyrie', email: 'kyrie@bozone.cn', password: 'kyrie123', role: 'admin' },
     { name: '运营测试', email: 'ops@bozone.cn', password: 'ops2024test', role: 'operator' },
+    { name: '超级账号', email: 'super@bozone.cn', password: 'Bozone2024!', role: 'admin' },
   ]
 
-  console.log('[Seed] Creating dev accounts...')
+  console.log('[Seed] Creating accounts with scrypt passwords...')
   for (const acc of accounts) {
     try {
-      const res = await fetch(`http://localhost:${port}/api/auth/sign-up/email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:5174' },
-        body: JSON.stringify({ name: acc.name, email: acc.email, password: acc.password }),
+      const id = crypto.randomUUID()
+      const now = new Date().toISOString()
+      const hashedPw = await hashPassword(acc.password)
+      
+      await db.insert(userTable).values({
+        id,
+        name: acc.name,
+        email: acc.email,
+        password: hashedPw,
+        role: acc.role,
+        createdAt: now,
+        updatedAt: now,
+        emailVerified: 1,
       })
-      const text = await res.text()
-      console.log(`  ${acc.email} → ${res.ok && !text.includes('error') ? 'OK' : 'FAIL'}`)
-      // Set role after sign-up
-      if (res.ok) {
-        await db.update(schema.user)
-          .set({ role: acc.role } as any)
-          .where(eq(schema.user.email, acc.email))
-        console.log(`  Role set: ${acc.email} → ${acc.role}`)
-      }
+      console.log(`  ✅ ${acc.email} (${acc.role})`)
     } catch (e: any) {
-      console.error(`  ${acc.email} → ${e.message}`)
+      if (e.message?.includes('Duplicate')) {
+        console.log(`  ⏭️  ${acc.email} already exists`)
+      } else {
+        console.error(`  ❌ ${acc.email} → ${e.message}`)
+      }
     }
   }
-  // Mark as seeded
+
   await db.insert(schema.setting).values({ key: 'seeded', value: '1' })
-  console.log('[Seed] Done.')
+  console.log('[Seed] Done. Use super@bozone.cn / Bozone2024! to login.')
 }

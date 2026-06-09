@@ -41,7 +41,7 @@ export function SignUpForm({ className, ...props }: React.HTMLAttributes<HTMLFor
   async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
     try {
-      const result = await signUp.email({
+      const result = await signUp({
         name: data.name,
         email: data.email,
         password: data.password,

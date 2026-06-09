@@ -1,53 +1,41 @@
 import { create } from 'zustand'
-import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
-
-const ACCESS_TOKEN = 'thisisjustarandomstring'
-
-interface AuthUser {
-  accountNo: string
-  email: string
-  role: string[]
-  exp: number
-}
+import { getUser, getToken, clearAuth } from '@/lib/auth-client'
+import type { AuthUser as JWTUser } from '@/lib/auth-client'
 
 interface AuthState {
   auth: {
-    user: AuthUser | null
-    setUser: (user: AuthUser | null) => void
+    user: JWTUser | null
+    setUser: (user: JWTUser | null) => void
     accessToken: string
-    setAccessToken: (accessToken: string) => void
+    setAccessToken: (token: string) => void
     resetAccessToken: () => void
     reset: () => void
   }
 }
 
-export const useAuthStore = create<AuthState>()((set) => {
-  const cookieState = getCookie(ACCESS_TOKEN)
-  const initToken = cookieState ? JSON.parse(cookieState) : ''
+export const useAuthStore = create<AuthState>()(() => {
+  // Initialize from localStorage (JWT-based, not cookie)
+  const initToken = getToken() || ''
   return {
     auth: {
-      user: null,
+      user: getUser(),
       setUser: (user) =>
         set((state) => ({ ...state, auth: { ...state.auth, user } })),
       accessToken: initToken,
-      setAccessToken: (accessToken) =>
-        set((state) => {
-          setCookie(ACCESS_TOKEN, JSON.stringify(accessToken))
-          return { ...state, auth: { ...state.auth, accessToken } }
-        }),
-      resetAccessToken: () =>
-        set((state) => {
-          removeCookie(ACCESS_TOKEN)
-          return { ...state, auth: { ...state.auth, accessToken: '' } }
-        }),
-      reset: () =>
-        set((state) => {
-          removeCookie(ACCESS_TOKEN)
-          return {
-            ...state,
-            auth: { ...state.auth, user: null, accessToken: '' },
-          }
-        }),
+      setAccessToken: (_accessToken) => {
+        // Token is managed by auth-client via localStorage
+      },
+      resetAccessToken: () => {
+        clearAuth()
+        set((state) => ({ ...state, auth: { ...state.auth, accessToken: '', user: null } }))
+      },
+      reset: () => {
+        clearAuth()
+        set((state) => ({
+          ...state,
+          auth: { ...state.auth, user: null, accessToken: '' },
+        }))
+      },
     },
   }
 })

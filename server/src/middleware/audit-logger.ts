@@ -3,11 +3,12 @@
 import type { Context, Next } from 'hono'
 import { db } from '../db.js'
 import { auditLog } from '../db-schema.js'
-import { auth } from '../auth.js'
+import { verifyToken } from '../auth-jwt.js'
 
 // Skip logging for these paths
 const SKIP_PATHS = [
   '/api/auth',
+  '/api/auth/jwt',
   '/api/audit-logs', // don't log the log viewer itself
 ]
 
@@ -25,17 +26,21 @@ export function auditLogger() {
       return next()
     }
 
-    // Try to identify the user
+    // Try to identify the user from JWT token
     let userId: string | null = null
     let username = 'anonymous'
     try {
-      const session = await auth.api.getSession({ headers: c.req.raw.headers })
-      if (session?.user) {
-        userId = session.user.id
-        username = session.user.name || session.user.email || 'unknown'
+      const authHeader = c.req.header('Authorization')
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+      if (token) {
+        const payload = verifyToken(token)
+        if (payload) {
+          userId = payload.userId
+          username = payload.name || payload.email || 'unknown'
+        }
       }
     } catch {
-      // User not authenticated — still log the request
+      // Token invalid — still log the request as anonymous
     }
 
     // Get client IP

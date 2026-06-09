@@ -1,15 +1,22 @@
+import { authHeaders, getToken } from './auth-client'
+
 // Same-origin: all requests go to the same host that serves the page
-// (backend serves both API + static frontend on :3001)
 const BASE = ''
 
 export async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+      ...options?.headers,
+    },
     credentials: 'include',
     ...options,
   })
   if (res.status === 401) {
-    // 未登录或会话过期，跳转到登录页
+    // Token expired — clear local storage and redirect
+    localStorage.removeItem('bozone_jwt_token')
+    localStorage.removeItem('bozone_user')
     window.location.href = '/sign-in'
     throw new Error('Unauthorized')
   }

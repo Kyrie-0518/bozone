@@ -9,6 +9,8 @@ import {
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { signOut } from '@/lib/auth-client'
+// Note: api.ts already handles 401 by clearing token and redirecting
+// This queryCache handler is a safety net for TanStack Query errors
 import { handleServerError } from '@/lib/handle-server-error'
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'

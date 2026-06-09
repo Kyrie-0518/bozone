@@ -21,7 +21,7 @@ import { PasswordInput } from '@/components/password-input'
 
 const formSchema = z.object({
   email: z.string().email({ message: '请输入有效的邮箱地址。' }),
-  password: z.string().min(7, '密码至少需要7个字符。'),
+  password: z.string().min(6, '密码至少需要6个字符。'),
 })
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
@@ -40,11 +40,8 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
   async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
     try {
-      const result = await signIn.email({
-        email: data.email,
-        password: data.password,
-      })
-
+      const result = await signIn({ email: data.email, password: data.password })
+      
       if (result.error) {
         toast.error(result.error.message || '登录失败，请检查邮箱和密码。')
         setIsLoading(false)
@@ -86,12 +83,6 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
                 <PasswordInput placeholder='********' {...field} />
               </FormControl>
               <FormMessage />
-              <Link
-                to='/forgot-password'
-                className='absolute inset-e-0 -top-0.5 text-sm font-medium text-muted-foreground hover:opacity-75'
-              >
-                忘记密码？
-              </Link>
             </FormItem>
           )}
         />
