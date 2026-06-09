@@ -137,6 +137,7 @@ app.get('*', async (c) => {
 })
 
 // ── Auto-migration: add password column to user table (BetterAuth → JWT migration) ──
+// MySQL doesn't support ADD COLUMN IF NOT EXISTS, so we check first
 try {
   const mysql = await import('mysql2/promise')
   const conn = await mysql.createConnection({
@@ -146,11 +147,24 @@ try {
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'bozone',
   })
-  await conn.execute(`ALTER TABLE \`user\` ADD COLUMN IF NOT EXISTS \`password\` TEXT NULL`)
-  console.log('[Migrate] user.password column ready.')
+  
+  // Check if password column exists
+  const [rows] = await conn.execute(
+    "SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user' AND COLUMN_NAME = 'password'"
+  )
+  const exists = (rows as any[])[0]?.cnt > 0
+  
+  if (!exists) {
+    // MySQL compatible: add column without IF NOT EXISTS
+    await conn.execute(`ALTER TABLE \`user\` ADD COLUMN \`password\` TEXT NULL AFTER \`lastLogin\``)
+    console.log('[Migrate] user.password column ADDED.')
+  } else {
+    console.log('[Migrate] user.password column already exists.')
+  }
+  
   await conn.end()
 } catch (e: any) {
-  console.warn('[Migrate] Could not auto-add password column:', e.message)
+  console.warn('[Migrate] Error:', e.message)
 }
 
 // ── Init DB & Start ──
