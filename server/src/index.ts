@@ -233,8 +233,17 @@ serve({ fetch: app.fetch, port }, async () => {
   seed().catch(console.error)
 })
 
-// ── Seed (JWT version: ensure accounts have scrypt-hashed passwords) ──
+// ── Seed (JWT version: raw SQL, ensure accounts have scrypt-hashed passwords) ──
 async function seed() {
+  const mysql = await import('mysql2/promise')
+  const conn = await mysql.createConnection({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'bozone',
+  })
+
   const accounts = [
     { name: '管理员', email: 'admin@bozone.cn', password: 'admin123', role: 'admin' },
     { name: 'Kyrie', email: 'kyrie@bozone.cn', password: 'kyrie123', role: 'admin' },
@@ -242,30 +251,26 @@ async function seed() {
     { name: '超级账号', email: 'super@bozone.cn', password: 'Bozone2024!', role: 'admin' },
   ]
 
-  console.log('[Seed] Ensuring accounts with JWT passwords...')
+  console.log('[Seed] Ensuring accounts with JWT passwords (raw SQL)...')
   for (const acc of accounts) {
     try {
-      const existing = await db.select({ id: userTable.id, pw: userTable.password }).from(userTable).where(eq(userTable.email, acc.email)).limit(1)
+      const [rows] = await conn.execute('SELECT id FROM `user` WHERE email = ? LIMIT 1', [acc.email])
       const hashedPw = await hashPassword(acc.password)
       const now = new Date().toISOString()
 
-      if (existing.length > 0) {
-        // Update existing user — always set fresh password (handles BetterAuth migration)
-        await db.update(userTable).set({
-          name: acc.name,
-          password: hashedPw,
-          role: acc.role,
-          updatedAt: now,
-        }).where(eq(userTable.id, existing[0].id))
-        console.log(`  ✏️  ${acc.email} updated with JWT password`)
+      if ((rows as any[]).length > 0) {
+        const userId = (rows as any[])[0].id
+        await conn.execute(
+          'UPDATE `user` SET name=?, password=?, role=?, updated_at=? WHERE id=?',
+          [acc.name, hashedPw, acc.role, now, userId]
+        )
+        console.log(`  ✏️  ${acc.email} updated`)
       } else {
-        // Insert new user
         const id = crypto.randomUUID()
-        await db.insert(userTable).values({
-          id, name: acc.name, email: acc.email,
-          password: hashedPw, role: acc.role,
-          createdAt: now, updatedAt: now, emailVerified: 1,
-        })
+        await conn.execute(
+          'INSERT INTO `user` (id,name,email,password,role,created_at,updated_at,email_verified) VALUES (?,?,?,?,?,?,?,?)',
+          [id, acc.name, acc.email, hashedPw, acc.role, now, now, 1]
+        )
         console.log(`  ✅ ${acc.email} created (${acc.role})`)
       }
     } catch (e: any) {
@@ -273,5 +278,6 @@ async function seed() {
     }
   }
 
+  await conn.end()
   console.log('[Seed] Done. Use super@bozone.cn / Bozone2024! to login.')
 }

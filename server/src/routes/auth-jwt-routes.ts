@@ -1,16 +1,26 @@
 /**
- * JWT Auth Routes — replace BetterAuth session-based auth.
+ * JWT Auth Routes — pure raw SQL version.
+ * Bypasses Drizzle ORM for user table to avoid schema mismatch issues.
  * POST /api/auth/jwt/login     → email + password → JWT token
  * POST /api/auth/jwt/register  → name + email + password → create user + JWT
  * GET  /api/auth/jwt/me        → verify token, return user info
  */
 import { Hono } from 'hono'
-import { db } from '../db.js'
-import { user } from '../db-schema.js'
-import { eq } from 'drizzle-orm'
+import mysql from 'mysql2/promise'
 import { hashPassword, signToken, extractToken, verifyToken } from '../auth-jwt.js'
 
 const app = new Hono()
+
+// ── Raw DB connection (same config as db.ts) ──
+function getDb(): Promise<mysql.Connection> {
+  return mysql.createConnection({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'bozone',
+  })
+}
 
 // POST /api/auth/jwt/login
 app.post('/login', async (c) => {
@@ -19,32 +29,41 @@ app.post('/login', async (c) => {
     return c.json({ error: '请输入邮箱和密码' }, 400)
   }
 
-  const rows = await db.select().from(user).where(eq(user.email, email)).limit(1)
-  const u = rows[0]
-  if (!u) {
-    return c.json({ error: '邮箱或密码错误' }, 401)
+  const conn = await getDb()
+  try {
+    // Raw SQL: only select columns we know exist
+    const [rows] = await conn.execute(
+      'SELECT id, name, email, role, password FROM `user` WHERE email = ? LIMIT 1',
+      [email]
+    )
+    const u = (rows as any[])[0]
+    if (!u) {
+      return c.json({ error: '邮箱或密码错误' }, 401)
+    }
+
+    // Verify password
+    let valid = false
+    if (u.password && typeof u.password === 'string' && u.password.includes(':')) {
+      // scrypt format: salt:key
+      valid = await verifyPassword(password, u.password)
+    }
+    if (!valid) {
+      return c.json({ error: '邮箱或密码错误' }, 401)
+    }
+
+    const token = signToken({ userId: u.id, email: u.email, role: u.role || 'operator' })
+
+    // Update last login
+    await conn.execute("UPDATE `user` SET last_login = ? WHERE id = ?", [new Date().toISOString(), u.id])
+
+    return c.json({
+      success: true,
+      token,
+      user: { id: u.id, name: u.name, email: u.email, role: u.role || 'operator' },
+    })
+  } finally {
+    await conn.end()
   }
-
-  // account.password stores the bcrypt/scrypt hash
-  const valid = await verifyPassword(password, u.password || '')
-  if (!valid) {
-    return c.json({ error: '邮箱或密码错误' }, 401)
-  }
-
-  const token = signToken({
-    userId: u.id,
-    email: u.email,
-    role: u.role || 'operator',
-  })
-
-  // Update last login
-  await db.update(user).set({ lastLogin: new Date().toISOString() }).where(eq(user.id, u.id))
-
-  return c.json({
-    success: true,
-    token,
-    user: { id: u.id, name: u.name, email: u.email, role: u.role || 'operator' },
-  })
 })
 
 // POST /api/auth/jwt/register
@@ -57,33 +76,28 @@ app.post('/register', async (c) => {
     return c.json({ error: '密码至少需要6个字符' }, 400)
   }
 
-  const existing = await db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
-  if (existing.length > 0) {
-    return c.json({ error: '该邮箱已被注册' }, 409)
+  const conn = await getDb()
+  try {
+    const [existing] = await conn.execute('SELECT id FROM `user` WHERE email = ? LIMIT 1', [email])
+    if ((existing as any[]).length > 0) {
+      return c.json({ error: '该邮箱已被注册' }, 409)
+    }
+
+    const id = crypto.randomUUID()
+    const hashedPw = await hashPassword(password)
+    const now = new Date().toISOString()
+
+    await conn.execute(
+      'INSERT INTO `user` (id, name, email, password, role, created_at, updated_at, email_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, name, email, hashedPw, 'operator', now, now, 1]
+    )
+
+    const token = signToken({ userId: id, email, role: 'operator' })
+
+    return c.json({ success: true, token, user: { id, name, email, role: 'operator' } }, 201)
+  } finally {
+    await conn.end()
   }
-
-  const id = crypto.randomUUID()
-  const hashedPw = await hashPassword(password)
-  const now = new Date().toISOString()
-
-  await db.insert(user).values({
-    id,
-    name,
-    email,
-    password: hashedPw,
-    role: 'operator',
-    createdAt: now,
-    updatedAt: now,
-    emailVerified: 1,
-  })
-
-  const token = signToken({ userId: id, email, role: 'operator' })
-
-  return c.json({
-    success: true,
-    token,
-    user: { id, name, email, role: 'operator' },
-  }, 201)
 })
 
 // GET /api/auth/jwt/me — verify token & return current user
