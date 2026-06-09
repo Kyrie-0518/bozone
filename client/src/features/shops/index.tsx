@@ -15,6 +15,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { authHeaders } from '@/lib/auth-client'
 
 const regions = [
   { value: 'MY', label: '马来西亚' },
@@ -74,9 +75,8 @@ export function ShopsPage() {
     try {
       const res = await fetch('/api/tiktok/callback', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ code: authCode.trim() }),
-        credentials: 'include',
       })
       const json = await res.json()
       if (json.success) {
@@ -86,9 +86,8 @@ export function ShopsPage() {
           try {
             await fetch(`/api/tiktok/${shopId}/metadata`, {
               method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...authHeaders() },
               body: JSON.stringify({ name: authShopName, region: authRegion }),
-              credentials: 'include',
             })
           } catch {}
         }
@@ -106,8 +105,7 @@ export function ShopsPage() {
   const handleTestConnection = async (id: number) => {
     try {
       const res = await fetch('/api/tiktok/test', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
-        credentials: 'include',
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ id }),
       })
       const json = await res.json()
       showToast(json.success ? 'success' : 'error', json.success ? '连接成功' : '连接失败: ' + json.error)
@@ -119,8 +117,7 @@ export function ShopsPage() {
   const handleRefreshToken = async (shopId: string) => {
     try {
       const res = await fetch('/api/tiktok/refresh', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shop_id: shopId }),
-        credentials: 'include',
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ shop_id: shopId }),
       })
       const json = await res.json()
       showToast(json.success ? 'success' : 'error', json.success ? 'Token 已刷新' : json.error)
@@ -143,9 +140,8 @@ export function ShopsPage() {
     try {
       const res = await fetch(`/api/tiktok/${shopId}/metadata`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ cipher }),
-        credentials: 'include',
       })
       const json = await res.json()
       showToast(json.success ? 'success' : 'error', json.success ? 'Cipher 已更新' : json.error || '更新失败')
