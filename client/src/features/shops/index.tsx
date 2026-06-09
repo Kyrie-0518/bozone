@@ -72,7 +72,7 @@ export function ShopsPage() {
   const handleSubmitCode = async () => {
     if (!authCode.trim()) return
     try {
-      const res = await fetch('http://8.138.36.120:3001/api/tiktok/callback', {
+      const res = await fetch('/api/tiktok/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: authCode.trim() }),
@@ -84,7 +84,7 @@ export function ShopsPage() {
         const shopId = json.shop_id
         if (shopId && authShopName) {
           try {
-            await fetch(`http://8.138.36.120:3001/api/tiktok/${shopId}/metadata`, {
+            await fetch(`/api/tiktok/${shopId}/metadata`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ name: authShopName, region: authRegion }),
@@ -105,7 +105,7 @@ export function ShopsPage() {
 
   const handleTestConnection = async (id: number) => {
     try {
-      const res = await fetch('http://8.138.36.120:3001/api/tiktok/test', {
+      const res = await fetch('/api/tiktok/test', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
         credentials: 'include',
       })
@@ -118,7 +118,7 @@ export function ShopsPage() {
 
   const handleRefreshToken = async (shopId: string) => {
     try {
-      const res = await fetch('http://8.138.36.120:3001/api/tiktok/refresh', {
+      const res = await fetch('/api/tiktok/refresh', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shop_id: shopId }),
         credentials: 'include',
       })
@@ -141,7 +141,7 @@ export function ShopsPage() {
     if (!cipher) return
     setSavingCipherId(shopId)
     try {
-      const res = await fetch(`http://8.138.36.120:3001/api/tiktok/${shopId}/metadata`, {
+      const res = await fetch(`/api/tiktok/${shopId}/metadata`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cipher }),
