@@ -150,10 +150,19 @@ export async function exchangeCode(code: string): Promise<TokenResponse> {
   const url = `${AUTH_HOST}/api/v2/token/get?${params}`
 
   console.log('[TikTok] Exchanging code for token...')
+  console.log(`[TikTok] Token exchange URL: ${AUTH_HOST}/api/v2/token/get?app_key=${appKey}&app_secret=***&auth_code=${code.slice(0,8)}...&grant_type=authorized_code`)
+  
   const res = await fetch(url)
-  const json: any = await res.json()
+  const text = await res.text()
+  console.log(`[TikTok] Token exchange response (${res.status}):`, text.slice(0, 500))
+  
+  let json: any
+  try { json = JSON.parse(text) } catch { throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`) }
 
-  if (json.code !== 0) throw new Error(json.message || 'Token exchange failed')
+  if (json.code !== 0) {
+    // Enhanced error with full response for debugging
+    throw new Error(json.message || json.msg || `Token exchange failed (code=${json.code})`)
+  }
 
   const d = json.data
   const token = d.access_token
