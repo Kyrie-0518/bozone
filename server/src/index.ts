@@ -2,6 +2,9 @@ import 'dotenv/config'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { readFile, readdir, stat } from 'node:fs/promises'
+import { extname, join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { auth, initAuth } from './auth.js'
 import { initBusinessTables, db } from './db.js'
 import { user } from './db-schema.js'
@@ -81,7 +84,62 @@ app.route('/api/settings', settingsRoutes)
 app.use('/api/sync/*', requireRole('manager'))
 app.route('/api/sync', syncRoutes)
 
+// ── Static file serving (catch-all after all /api routes) ──
+app.get('*', async (c) => {
+  const pathname = c.req.path
+  // Try serving static file first
+  const staticRes = await serveStatic(pathname)
+  if (staticRes) return staticRes
+  // SPA fallback for client-side routing
+  return serveSPA()
+})
+
 const port = 3001
+
+// ── Static file serving (SPA: serve client/dist) ──
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const DIST_DIR = join(__dirname, '../client/dist')
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+}
+
+async function serveStatic(pathname: string): Promise<Response | null> {
+  // Security: block path traversal
+  if (pathname.includes('..')) return null
+  let filePath = join(DIST_DIR, pathname)
+  try {
+    const s = await stat(filePath)
+    if (s.isDirectory()) filePath = join(filePath, 'index.html')
+    const ext = extname(filePath)
+    const body = await readFile(filePath)
+    return new Response(body, {
+      headers: { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' },
+    })
+  } catch {
+    return null
+  }
+}
+
+// SPA fallback: for non-API routes that don't match a file, serve index.html
+async function serveSPA(): Promise<Response> {
+  try {
+    const body = await readFile(join(DIST_DIR, 'index.html'))
+    return new Response(body, { headers: { 'Content-Type': MIME_TYPES['.html'] } })
+  } catch {
+    return new Response('Frontend not built. Run: cd client && npm run build', { status: 503 })
+  }
+}
 
 await initAuth()
 await initBusinessTables()

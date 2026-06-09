@@ -1,4 +1,6 @@
-const BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : 'http://8.138.36.120:3001'
+// Same-origin: all requests go to the same host that serves the page
+// (backend serves both API + static frontend on :3001)
+const BASE = ''
 
 export async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
