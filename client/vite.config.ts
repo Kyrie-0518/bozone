@@ -1,15 +1,45 @@
-/// <reference types="vitest/config" />
-import path from 'path'
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
-import { tanstackRouter } from '@tanstack/router-plugin/vite'
-import { playwright } from '@vitest/browser-playwright'
+import vue from '@vitejs/plugin-vue'
+import vueJsx from '@vitejs/plugin-vue-jsx'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { ArcoResolver } from 'unplugin-vue-components/resolvers'
+import { resolve } from 'path'
 
-// https://vite.dev/config/
 export default defineConfig({
+  plugins: [
+    vue(),
+    vueJsx(),
+    AutoImport({
+      resolvers: [ArcoResolver()],
+      imports: ['vue', 'vue-router', 'pinia'],
+      dts: true,
+    }),
+    Components({
+      resolvers: [
+        ArcoResolver({
+          sideEffect: true,
+        }),
+      ],
+    }),
+  ],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
+  css: {
+    preprocessorOptions: {
+      less: {
+        javascriptEnabled: true,
+        modifyVars: {
+          'arcoblue-6': '#2563eb',
+        },
+      },
+    },
+  },
   server: {
-    port: 5174,
+    port: 5173,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
@@ -17,36 +47,9 @@ export default defineConfig({
       },
     },
   },
-  plugins: [
-    tanstackRouter({
-      target: 'react',
-      autoCodeSplitting: true,
-    }),
-    react(),
-    tailwindcss(),
-  ],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-  test: {
-    silent: 'passed-only',
-    unstubEnvs: true,
-    browser: {
-      enabled: true,
-      provider: playwright(),
-      instances: [{ browser: 'chromium' }],
-    },
-    coverage: {
-      exclude: [
-        'src/components/ui/**',
-        'src/assets/**',
-        'src/tanstack-table.d.ts',
-        'src/routeTree.gen.ts',
-        'src/test-utils/**',
-        'src/routes/**',
-      ],
-    },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    chunkSizeWarningLimit: 2000,
   },
 })
